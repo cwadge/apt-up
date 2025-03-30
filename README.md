@@ -42,7 +42,7 @@ Built with flexibility and extensibility in mind, it supports colored output, in
 ## Installation
 Download:
 ```bash
-curl -sL https://raw.githubusercontent.com/cwadge/apt-up/main/apt-up.sh -o apt-up.sh
+curl -sL https://raw.githubusercontent.com/cwadge/apt-up/main/apt-up -o apt-up
 ```
 Or clone the repo:
 ```bash
@@ -52,12 +52,12 @@ cd apt-up
 
 Make Executable:
 ```bash
-chmod +x apt-up.sh
+chmod +x apt-up
 ```
 
 (Optional but recommended) Install System-Wide:
 ```bash
-sudo mv apt-up.sh /usr/local/sbin/apt-up
+sudo mv apt-up /usr/local/sbin/apt-up
 ```
 
 ## Usage
