@@ -134,7 +134,7 @@ The following packages will be REMOVED:  
 Normally output is color-coded, if the terminal supports it.
 
 ## Hooks
-If you want to extend apt-up's functionality, or have it run Add custom scripts to:
+If you want to extend apt-up's functionality, etc. add custom scripts to:
 - `/etc/apt-up.d/pre.d/` (before updates).
 
 - `/etc/apt-up.d/post.d/` (after updates).
