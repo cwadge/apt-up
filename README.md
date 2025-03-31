@@ -50,7 +50,7 @@ git clone https://github.com/cwadge/apt-up.git
 cd apt-up
 ```
 
-Make Executable:
+Make executable:
 ```bash
 chmod +x apt-up
 ```
@@ -134,14 +134,14 @@ The following packages will be REMOVED:  
 Normally output is color-coded, if the terminal supports it.
 
 ## Hooks
-If you want to extend apt-up's functionality, etc. add custom scripts to:
+If you want to extend apt-up's functionality, you can add custom scripts to:
 - `/etc/apt-up.d/pre.d/` (before updates).
 
 - `/etc/apt-up.d/post.d/` (after updates).
 
 - `/etc/apt-up.d/fail.d/` (on failure).
 
-Scripts with critical in the name (e.g. `00-critical-check.sh`) halt execution if they fail.
+Scripts with '`critical`' in the name (e.g. `00-critical-check.sh`) halt execution if they fail.
 
 Run `sudo apt-up --install` to create these directories with a sample hook.
 
