@@ -145,9 +145,9 @@ Set_BASH_Options ()
 
 Show_Help() {
 	cat << EOF
-apt-up.sh - Comprehensive update script for Debian-based systems
+apt-up - Comprehensive update script for Debian-based systems
 
-Usage: apt-up.sh [OPTIONS]
+Usage: apt-up [OPTIONS]
 
 Options:
   --no-interactive     Run without user interaction
@@ -194,7 +194,7 @@ Load_Config() {
 Create_Sample_Config() {
 	CURRENT_STEP="creating sample configuration"
 	cat > "/etc/apt-up.conf.sample" << 'EOT'
-# Configuration file for apt-up.sh
+# Configuration file for apt-up
 # Copy this file to /etc/apt-up.conf and modify as needed
 
 ## VARIABLES ##
@@ -305,7 +305,7 @@ Initialize_Logging() {
 			return
 		fi
 		# Add header to log file
-		echo "==== apt-up.sh run started at $(date) ====" >> "$LOG_FILE"
+		echo "==== apt-up run started at $(date) ====" >> "$LOG_FILE"
 	fi
 }
 
@@ -633,7 +633,7 @@ Run_Hooks "post"
 
 # Close log file if enabled
 if [ "$ENABLE_LOGGING" = "true" ]; then
-	echo "==== apt-up.sh run completed at $(date) ====" >> "$LOG_FILE"
+	echo "==== apt-up run completed at $(date) ====" >> "$LOG_FILE"
 fi
 
 cecho " ________________________________ " boldblue
