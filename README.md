@@ -60,6 +60,11 @@ chmod +x apt-up
 sudo mv apt-up /usr/local/sbin/apt-up
 ```
 
+Or download + install all at once:
+```bash
+sudo wget https://raw.githubusercontent.com/cwadge/apt-up/main/apt-up -O /usr/local/sbin/apt-up && sudo chmod 755 /usr/local/sbin/apt-up
+```
+
 ## Usage
 Run interactively:
 ```bash

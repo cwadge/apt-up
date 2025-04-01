@@ -175,7 +175,7 @@ Parse_Arguments() {
 			"--no-cache-clean") ENABLE_CACHE_CLEAN=false ;;
 			"--install") Create_Sample_Config; Create_Hook_Dirs; exit 0 ;;
 			"--help") Show_Help; exit 0 ;;
-			*) cecho "[WARNING] Unknown argument: $arg" boldyellow ;;
+			*) cecho "[WARNING] Unknown argument: $arg" boldyellow ; Show_Help ; exit 1 ;;
 		esac
 	done
 }
