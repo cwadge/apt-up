@@ -23,7 +23,7 @@ Built with flexibility and extensibility in mind, it supports colored output, in
 - **Logging:** Optional logs to /var/log/apt-up.log.
 
 ## Requirements
-- `Debian`-based system (e.g., Debian, Mint, Ubuntu, etc.)
+- `Debian`-based system (e.g. Debian, Mint, Ubuntu, etc.)
 
 - `Bash` (still basically works with 'sh' though).
 
@@ -82,12 +82,12 @@ sudo apt-up --no-interactive
 --no-flatpak         Skip Flatpak updates
 --no-kernel-cleanup  Skip old kernel removal
 --no-cache-clean     Skip cache cleaning
---install            Create sample config and hooks
+--install            Create config and hook directories
 --help               Show help message
 ```
 ### Configuration
 
-Edit `/etc/apt-up.conf` (optional, see sample at `/etc/apt-up.conf.sample` after `sudo apt-up --install`).
+Edit `/etc/apt-up.conf` (after optional `sudo apt-up --install`).
 
 ## Example Run
 Here’s what it looks like in action, cleaning up old kernels:
@@ -148,7 +148,7 @@ If you want to extend apt-up's functionality, you can add custom scripts to:
 
 Scripts with '`critical`' in the name (e.g. `00-critical-check.sh`) halt execution if they fail.
 
-Run `sudo apt-up --install` to create these directories with a sample hook.
+Run `sudo apt-up --install` to create these directories (with a sample hook in `pre.d`).
 
 ## License
 

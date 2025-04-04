@@ -8,7 +8,9 @@ CONFIG_FILE="/etc/apt-up.conf"
 # Default values (may be overridden by config file)
 # Variables to export during update (space-separated list):
 EXPORT_VARS="IGNORE_CC_MISMATCH=1"
-# Defaults to GitLab kernel-firmware, which is upstream of kernel.org:
+# Defaults to GitLab kernel-firmware, which is upstream of kernel.org,
+# but the kernel.org git is a more heavily scrutinized and conservative option:
+# https://web.git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
 FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
 
 # Feature toggles
@@ -156,7 +158,7 @@ Options:
   --no-flatpak         Skip Flatpak updates
   --no-kernel-cleanup  Skip removal of old kernels
   --no-cache-clean     Skip cleaning package caches
-  --install            Create sample configuration files and hook directories
+  --install            Create configuration files and hook directories
   --help               Display this help message
 
 For more information, see the configuration file at /etc/apt-up.conf
@@ -173,7 +175,7 @@ Parse_Arguments() {
 			"--no-flatpak") ENABLE_FLATPAK_UPDATE=false ;;
 			"--no-kernel-cleanup") ENABLE_KERNEL_CLEANUP=false ;;
 			"--no-cache-clean") ENABLE_CACHE_CLEAN=false ;;
-			"--install") Create_Sample_Config; Create_Hook_Dirs; exit 0 ;;
+			"--install") Create_Config; Create_Hook_Dirs; exit 0 ;;
 			"--help") Show_Help; exit 0 ;;
 			*) cecho "[FATAL] Unknown argument: $arg" red ; Show_Help ; exit 1 ;;
 		esac
@@ -191,16 +193,15 @@ Load_Config() {
 	fi
 }
 
-Create_Sample_Config() {
-	CURRENT_STEP="creating sample configuration"
-	cat > "/etc/apt-up.conf.sample" << 'EOT'
-# Configuration file for apt-up
-# Copy this file to /etc/apt-up.conf and modify as needed
-
+Create_Config() {
+	CURRENT_STEP="creating configuration file"
+	cat > "/etc/apt-up.conf" << 'EOT'
 ## VARIABLES ##
 # Variables to export during update (space-separated list):
 EXPORT_VARS="IGNORE_CC_MISMATCH=1"
-# Defaults to GitLab kernel-firmware, which is upstream of kernel.org:
+# Defaults to GitLab kernel-firmware, which is upstream of kernel.org,
+# but the kernel.org git is a more heavily scrutinized and conservative option:
+# https://web.git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
 FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
 
 # Enable or disable specific features
@@ -221,7 +222,7 @@ USE_IONICE=true
 IONICE_CLASS=2
 IONICE_LEVEL=7
 EOT
-cecho "[INFO] Sample configuration created at /etc/apt-up.conf.sample" cyan
+cecho "[INFO] initial configuration created at /etc/apt-up.conf" cyan
 }
 
 Create_Hook_Dirs() {
@@ -235,8 +236,9 @@ Create_Hook_Dirs() {
 	cat > "${HOOKS_DIR}/pre.d/00-example" << 'EOT' || Error_Handler
 #!/bin/bash
 # Example pre-update hook
-echo "This is a sample pre-update hook"
-# Return 0 for success, non-zero for failure
+# This is a sample pre-update hook.
+# Normally you would do things here,
+# we're just going to exit with 0 (success)
 exit 0
 EOT
 CURRENT_STEP="setting permissions on sample hook"
