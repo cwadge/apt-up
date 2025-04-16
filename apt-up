@@ -628,7 +628,6 @@ cecho "\________________________________/ " boldblue
 CURRENT_STEP="syncing writes out to disk"
 # 60s should be plenty for slow or busy machines
 timeout 60s sync || Warn_Handler
-cecho "[INFO] Synced." cyan
 
 # Run post-update hooks
 Run_Hooks "post"
