@@ -82,6 +82,7 @@ sudo apt-up --no-interactive
 --no-flatpak         Skip Flatpak updates
 --no-kernel-cleanup  Skip old kernel removal
 --no-cache-clean     Skip cache cleaning
+--no-hooks           Skip running hook scripts
 --install            Create config and hook directories
 --help               Show help message
 ```
@@ -90,49 +91,66 @@ sudo apt-up --no-interactive
 Edit `/etc/apt-up.conf` (after optional `sudo apt-up --install`).
 
 ## Example Run
-Here’s what it looks like in action, cleaning up old kernels:
+Here’s what it looks like in action, checking for firmware & system updates, then running a custom hook script:
 ```
-[INFO] No configuration file found at /etc/apt-up.conf, using defaults
- ________________________________ 
-/ Exporting global variables...  \ 
+$ sudo apt-up
+[INFO] Loading configuration from /etc/apt-up.conf
+[INFO] Running pre hooks
+ ________________________________ 
+/ Exporting global variables...  \ 
 \________________________________/ 
 [INFO] Exporting: IGNORE_CC_MISMATCH=1
- ________________________________ 
-/ Updating kernel firmware...    \ 
+[INFO] Exporting: GE_PROTON_TARGET=/home/chris/.steam/steam/compatibilitytools.d
+ ________________________________ 
+/ Updating kernel firmware...    \ 
 \________________________________/ 
 [INFO] Checking for firmware updates...
-...
+remote: Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+From https://gitlab.com/kernel-firmware/linux-firmware
+ * branch            main       -> FETCH_HEAD
+HEAD is now at 94e4d27 Merge branch 'main' into 'main'
 [INFO] Firmware already up to date.
- ________________________________ 
-/ Checking for updated files...  \ 
+ ________________________________ 
+/ Checking for updated files...  \ 
 \________________________________/ 
 ...
-                                    
- ________________________________ 
+
+ ________________________________ 
 / Updating files if necessary... \ 
 \________________________________/ 
-...
-                                         
- ________________________________ 
-/ Updating flatpak packages...   \ 
+No packages will be installed, upgraded, or removed.
+0 packages upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Need to get 0 B of archives. After unpacking 0 B will be used.
+                                         
+ ________________________________ 
+/ Updating flatpak packages...   \ 
 \________________________________/ 
-...
- ________________________________ 
-/ Cleaning out the apt cache...  \ 
+Looking for updates…
+
+Nothing to do.
+ ________________________________ 
+/ Cleaning out the apt cache...  \ 
 \________________________________/ 
 [INFO] Finished cleaning cache.
- ________________________________ 
+ ________________________________ 
 / Purge old kernels & headers... \ 
 \________________________________/ 
-[INFO] Found some old kernels and headers to remove.
-The following packages will be REMOVED:  
-  linux-image-6.13.4-x64v3-xanmod1  linux-image-6.13.5-x64v3-xanmod1  linux-image-6.13.6-x64v3-xanmod1
- ________________________________ 
+[INFO] No old kernels or headers to remove.
+ ________________________________ 
 / Syncing buffers out to disk... \ 
 \________________________________/ 
-[INFO] Synced.
- ________________________________ 
-/           Finished.            \ 
+[INFO] Running post hooks
+[INFO] Running hook: 50-ge-proton
+Checking for GE-Proton updates...
+Using overridden Steam directory: /home/chris/.steam/steam/compatibilitytools.d
+Latest version: GE-Proton9-27
+GE-Proton9-27 already installed at /home/chris/.steam/steam/compatibilitytools.d/GE-Proton9-27
+No installation needed.
+Cleaning up old GE-Proton versions...
+No old versions to clean up.
+Done!
+ ________________________________ 
+/           Finished.            \ 
 \________________________________/ 
 
 ```

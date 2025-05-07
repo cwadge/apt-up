@@ -158,6 +158,7 @@ Options:
   --no-flatpak         Skip Flatpak updates
   --no-kernel-cleanup  Skip removal of old kernels
   --no-cache-clean     Skip cleaning package caches
+  --no-hooks           Skip running hook scripts
   --install            Create configuration files and hook directories
   --help               Display this help message
 
@@ -175,6 +176,7 @@ Parse_Arguments() {
 			"--no-flatpak") ENABLE_FLATPAK_UPDATE=false ;;
 			"--no-kernel-cleanup") ENABLE_KERNEL_CLEANUP=false ;;
 			"--no-cache-clean") ENABLE_CACHE_CLEAN=false ;;
+			"--no-hooks") ENABLE_HOOKS=false ;;
 			"--install") Create_Config; Create_Hook_Dirs; exit 0 ;;
 			"--help") Show_Help; exit 0 ;;
 			*) cecho "[FATAL] Unknown argument: $arg" red ; Show_Help ; exit 1 ;;
@@ -519,8 +521,8 @@ Kernel_Cleanup() {
 
 ## EXECUTION ##
 Set_BASH_Options
-Parse_Arguments "$@"
 Load_Config
+Parse_Arguments "$@"
 Initialize_Logging
 Detect_Bin_Paths
 Sanity_Check
