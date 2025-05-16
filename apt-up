@@ -450,37 +450,49 @@ Update_Firmware ()
 	NEW_HASH=$($GITBIN rev-parse HEAD)
 	if [ "$OLD_HASH" != "$NEW_HASH" ]; then
 		cecho "[INFO] New firmware detected, preparing installation..." cyan
-		# Preemptively clear all destinations from WHENCE (files and symlinks)
-		cecho "[INFO] Scanning for potential conflicts in /lib/firmware..." cyan
-		TEMP_ENTRIES=$(mktemp)
-		# Extract File and RawFile entries, unescaping spaces
-		grep -E '^(RawFile|File):' WHENCE | sed -E -e 's/^(RawFile|File):[[:space:]]*"(.+)"/\2/' | sed 's/\\//g' > "$TEMP_ENTRIES"
-		# Append Link entries (just the link part), unescaping spaces
-		grep -E '^Link:' WHENCE | sed -E -e 's/^Link:[[:space:]]+([^[:space:]].*[^[:space:]])[[:space:]]+->.*/\1/' | sed 's/\\//g' >> "$TEMP_ENTRIES"
+		# Initialize counters
+		SYMLINK_COUNT=0
 		ENTRY_COUNT=0
+		# Clean up recursive and broken symlinks
+		cecho "[INFO] Cleaning recursive and broken symlinks in /lib/firmware..." cyan
+		while IFS= read -r link; do
+			if ! readlink -e "$link" >/dev/null 2>&1; then
+				[ "$VERBOSE" = "true" ] && cecho "[INFO] Removing broken or recursive symlink: $link" cyan
+				rm -f "$link" || Warn_Handler
+				if [ ! -e "$link" ]; then
+					SYMLINK_COUNT=$((SYMLINK_COUNT + 1))
+				fi
+			fi
+		done < <(find /lib/firmware -type l -maxdepth 5 2>/dev/null)
+		cecho "[INFO] Removed $SYMLINK_COUNT broken or recursive symlinks." cyan
+		# Preemptively clear WHENCE destinations
+		cecho "[INFO] Scanning for conflicts in /lib/firmware from WHENCE..." cyan
+		TEMP_ENTRIES=$(mktemp)
+		grep -E '^(RawFile|File):' WHENCE | sed -E -e 's/^(RawFile|File):[[:space:]]*"(.+)"/\2/' | sed 's/\\//g' > "$TEMP_ENTRIES"
+		grep -E '^Link:' WHENCE | sed -E -e 's/^Link:[[:space:]]*(.+)[[:space:]]+->.*$/\1/' | sed 's/\\//g' | sed 's/^"//;s/"$//' >> "$TEMP_ENTRIES"
 		while read -r entry; do
+			[ -z "$entry" ] && continue
 			DEST_PATH="/lib/firmware/$entry"
-			if [ -e "$DEST_PATH" ]; then
-				rm -f "$DEST_PATH" || Warn_Handler
-				ENTRY_COUNT=$((ENTRY_COUNT + 1))
+			if [ -e "$DEST_PATH" ] || [ -L "$DEST_PATH" ]; then
+				if [ -d "$DEST_PATH" ] && [ ! -L "$DEST_PATH" ]; then
+					# Delete conflicting directory
+					[ "$VERBOSE" = "true" ] && cecho "[INFO] Removing conflicting directory: $DEST_PATH" cyan
+					rm -rf "$DEST_PATH" || Warn_Handler
+				else
+					# File or symlink
+					[ "$VERBOSE" = "true" ] && cecho "[INFO] Removing file or symlink: $DEST_PATH" cyan
+					rm -f "$DEST_PATH" || Warn_Handler
+				fi
+				if [ ! -e "$DEST_PATH" ]; then
+					ENTRY_COUNT=$((ENTRY_COUNT + 1))
+				fi
 			fi
 		done < "$TEMP_ENTRIES"
 		rm -f "$TEMP_ENTRIES"
 		if [ "$ENTRY_COUNT" -gt 0 ]; then
-			cecho "[INFO] Cleared $ENTRY_COUNT existing firmware entries in /lib/firmware." cyan
-		fi
-		# Quietly remove any broken symlinks with a count
-		BROKEN_SYMLINKS=$(find /lib/firmware -xtype l -print)
-		BROKEN_COUNT=0
-		if [ -n "$BROKEN_SYMLINKS" ]; then
-			cecho "[INFO] Cleaning up broken symlinks in /lib/firmware..." cyan
-			echo "$BROKEN_SYMLINKS" | while read -r link; do
-			rm -f "$link" || Warn_Handler
-			BROKEN_COUNT=$((BROKEN_COUNT + 1))
-		done
-		if [ "$BROKEN_COUNT" -gt 0 ]; then
-			cecho "[INFO] Removed $BROKEN_COUNT broken symlinks." cyan
-		fi
+			cecho "[INFO] Cleared $ENTRY_COUNT files, symlinks, or directories from WHENCE entries." cyan
+		else
+			cecho "[INFO] No files, symlinks, or directories cleared from WHENCE entries." cyan
 		fi
 		# Run the firmware update
 		cecho "[INFO] Installing firmware..." cyan
