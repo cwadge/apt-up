@@ -457,7 +457,7 @@ Update_Firmware ()
 		cecho "[INFO] Cleaning recursive and broken symlinks in /lib/firmware..." cyan
 		while IFS= read -r link; do
 			if ! readlink -e "$link" >/dev/null 2>&1; then
-				[ "$VERBOSE" = "true" ] && cecho "[INFO] Removing broken or recursive symlink: $link" cyan
+				[ "$ENABLE_LOGGING" = "true" ] && cecho "[INFO] Removing broken or recursive symlink: $link" cyan
 				rm -f "$link" || Warn_Handler
 				if [ ! -e "$link" ]; then
 					SYMLINK_COUNT=$((SYMLINK_COUNT + 1))
@@ -476,11 +476,11 @@ Update_Firmware ()
 			if [ -e "$DEST_PATH" ] || [ -L "$DEST_PATH" ]; then
 				if [ -d "$DEST_PATH" ] && [ ! -L "$DEST_PATH" ]; then
 					# Delete conflicting directory
-					[ "$VERBOSE" = "true" ] && cecho "[INFO] Removing conflicting directory: $DEST_PATH" cyan
+					[ "$ENABLE_LOGGING" = "true" ] && cecho "[INFO] Removing conflicting directory: $DEST_PATH" cyan
 					rm -rf "$DEST_PATH" || Warn_Handler
 				else
 					# File or symlink
-					[ "$VERBOSE" = "true" ] && cecho "[INFO] Removing file or symlink: $DEST_PATH" cyan
+					[ "$ENABLE_LOGGING" = "true" ] && cecho "[INFO] Removing file or symlink: $DEST_PATH" cyan
 					rm -f "$DEST_PATH" || Warn_Handler
 				fi
 				if [ ! -e "$DEST_PATH" ]; then
