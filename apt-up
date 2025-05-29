@@ -507,20 +507,125 @@ Update_Firmware ()
 
 Kernel_Cleanup() {
 	CURRENT_STEP="removing unneeded kernels and headers"
-	# Get all kernel and header packages in a single dpkg call
-	KERNEL_PACKAGES=$($DPKGBIN --list | awk '/^(ii|ri)  linux-(image|headers)/ { print $2 }') || Bypass_Handler
-	# Current running kernel version
+	# Get current running kernel version
 	CURRENT_KERNEL=$(uname -r)
-	# Initialize variables for previous versions
-	PREVIOUS_KERNEL=""
-	PREVIOUS_HEADERS=""
-	# Process each package to find the previous versions
-	PREVIOUS_KERNEL=$(echo "$KERNEL_PACKAGES" | grep "linux-image" | grep -v "$CURRENT_KERNEL" | sort -V | tail -n 1) || true
-	PREVIOUS_HEADERS=$(echo "$KERNEL_PACKAGES" | grep "linux-headers" | grep -v "$CURRENT_KERNEL" | sort -V | tail -n 1) || true
-	# Build list of packages to remove
-	PACKAGES_TO_REMOVE=$(echo "$KERNEL_PACKAGES" | grep -v "$CURRENT_KERNEL" | grep -v "$PREVIOUS_KERNEL" | grep -v "$PREVIOUS_HEADERS" | tr '\n' ' ' | sed 's/ *$//') || true
+	cecho "[INFO] Current running kernel: $CURRENT_KERNEL" cyan
+	# Get all installed kernel image packages (excluding meta-packages)
+	KERNEL_IMAGES=$($DPKGBIN --list | awk '/^ii  linux-image-[0-9]/ { print $2 }' | sort -V) || Bypass_Handler
+	# Get all kernel meta packages to preserve them
+	KERNEL_META_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-(image-)?[a-zA-Z]/ { if ($2 !~ /^linux-image-[0-9]/ && $2 !~ /^linux-headers-[0-9]/) print $2 }' | sort) || Bypass_Handler
+	if [ -z "$KERNEL_IMAGES" ]; then
+		cecho "[INFO] No versioned kernel packages found." cyan
+		return 0
+	fi
+	# Find the latest kernel version (highest version number)
+	LATEST_KERNEL=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 1)
+	cecho "[INFO] Latest installed kernel: $LATEST_KERNEL" cyan
+	# Determine which kernels to keep (always try to keep at least 2 for safety)
+	KERNELS_TO_KEEP=""
+	if [ "$CURRENT_KERNEL" = "$LATEST_KERNEL" ]; then
+		# Current and latest are the same, find the second-newest kernel
+		SECOND_LATEST=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 2 | head -n 1)
+		if [ -n "$SECOND_LATEST" ] && [ "$SECOND_LATEST" != "$LATEST_KERNEL" ]; then
+			KERNELS_TO_KEEP="$CURRENT_KERNEL $SECOND_LATEST"
+			cecho "[INFO] Current kernel is latest, keeping: $CURRENT_KERNEL and previous: $SECOND_LATEST" cyan
+		else
+			# Only one kernel installed
+			KERNELS_TO_KEEP="$CURRENT_KERNEL"
+			cecho "[INFO] Only one kernel installed, keeping: $CURRENT_KERNEL" cyan
+		fi
+	else
+		# Keep both current and latest
+		KERNELS_TO_KEEP="$CURRENT_KERNEL $LATEST_KERNEL"
+		cecho "[INFO] Keeping current kernel: $CURRENT_KERNEL and latest kernel: $LATEST_KERNEL" cyan
+	fi
+	# Build list of all packages to remove
+	PACKAGES_TO_REMOVE=""
+	# Process kernel images
+	for kernel_pkg in $KERNEL_IMAGES; do
+		kernel_version=${kernel_pkg#linux-image-}
+		should_keep=false
+		for keep_version in $KERNELS_TO_KEEP; do
+			if [ "$kernel_version" = "$keep_version" ]; then
+				should_keep=true
+				break
+			fi
+		done
+		if [ "$should_keep" = "false" ]; then
+			PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $kernel_pkg"
+			cecho "[INFO] Marking for removal: $kernel_pkg" cyan
+		fi
+	done
+	# Process kernel headers - get all installed header packages
+	HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
+	for header_pkg in $HEADER_PACKAGES; do
+		# Extract kernel version from header package name
+		# Remove the 'linux-headers-' prefix and any architecture suffix (-amd64, -common)
+		kernel_version=$(echo "$header_pkg" | sed 's/^linux-headers-//' | sed -E 's/(-amd64|-common)$//')
+		should_keep=false
+
+		# Check if this header package matches any kernel we want to keep
+		for keep_version in $KERNELS_TO_KEEP; do
+			if [ "$kernel_version" = "$keep_version" ]; then
+				should_keep=true
+				cecho "[INFO] Keeping headers for kernel $keep_version: $header_pkg" cyan
+				break
+			fi
+		done
+		if [ "$should_keep" = "false" ]; then
+			PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $header_pkg"
+			cecho "[INFO] Marking for removal: $header_pkg" cyan
+		fi
+	done
+	# Clean up the package list (remove duplicates and extra spaces)
+	PACKAGES_TO_REMOVE=$(echo $PACKAGES_TO_REMOVE | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/^ *//;s/ *$//')
+	# Filter out any meta packages that might have been accidentally included
+	if [ -n "$KERNEL_META_PACKAGES" ]; then
+		FILTERED_PACKAGES=""
+		for pkg in $PACKAGES_TO_REMOVE; do
+			is_meta=false
+			for meta_pkg in $KERNEL_META_PACKAGES; do
+				if [ "$pkg" = "$meta_pkg" ]; then
+					is_meta=true
+					break
+				fi
+			done
+			if [ "$is_meta" = "false" ]; then
+				FILTERED_PACKAGES="$FILTERED_PACKAGES $pkg"
+			fi
+		done
+		PACKAGES_TO_REMOVE=$(echo $FILTERED_PACKAGES | sed 's/^ *//;s/ *$//')
+	fi
 	if [ -n "$PACKAGES_TO_REMOVE" ]; then
-		cecho "[INFO] Found some old kernels and headers to remove." cyan
+		cecho "[INFO] Found old kernels and headers to remove:" cyan
+		for pkg in $PACKAGES_TO_REMOVE; do
+			cecho "[INFO]   - $pkg" cyan
+		done
+		if [ "$INTERACTIVE" = "true" ]; then
+			echo
+			cecho "[WARNING] About to remove the above packages. This will:" boldyellow
+			cecho "          - Keep your current running kernel ($CURRENT_KERNEL) and its headers" boldyellow
+			if [ "$CURRENT_KERNEL" != "$LATEST_KERNEL" ]; then
+				cecho "          - Keep the latest installed kernel ($LATEST_KERNEL) and its headers" boldyellow
+			else
+				# Find the second kernel being kept
+				SECOND_LATEST=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 2 | head -n 1)
+				if [ -n "$SECOND_LATEST" ] && [ "$SECOND_LATEST" != "$LATEST_KERNEL" ]; then
+					cecho "          - Keep the second-newest kernel version ($SECOND_LATEST) and its headers as fallback" boldyellow
+				fi
+			fi
+			cecho "          - Remove all other kernel versions and their headers" boldyellow
+			echo
+			read -r -p "==> Continue with kernel cleanup? [Y/n] " REPLY
+			case "$REPLY" in
+				( [nN]|[nN][oO] ) 
+					cecho "[INFO] Kernel cleanup skipped by user." cyan
+					return 0
+					;;
+			esac
+		fi
+		# Use aptitude for removal to leverage its dependency resolution
+		cecho "[INFO] Removing old kernel packages..." cyan
 		if [ "$INTERACTIVE" = "true" ]; then
 			$APTITUDEBIN purge $PACKAGES_TO_REMOVE || Warn_Handler
 		else
