@@ -597,7 +597,7 @@ Kernel_Cleanup() {
 		PACKAGES_TO_REMOVE=$(echo $FILTERED_PACKAGES | sed 's/^ *//;s/ *$//')
 	fi
 	if [ -n "$PACKAGES_TO_REMOVE" ]; then
-		cecho "[INFO] Found old kernels and headers to remove:" cyan
+		cecho "[INFO] Found old kernels and headers to remove:" boldcyan
 		for pkg in $PACKAGES_TO_REMOVE; do
 			cecho "[INFO]   - $pkg" cyan
 		done
@@ -632,7 +632,7 @@ Kernel_Cleanup() {
 			$APTITUDEBIN -y purge $PACKAGES_TO_REMOVE || Warn_Handler
 		fi
 	else
-		cecho "[INFO] No old kernels or headers to remove." cyan
+		cecho "[INFO] No old kernels or headers to remove." boldcyan
 	fi
 }
 
