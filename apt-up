@@ -154,11 +154,17 @@ Usage: apt-up [OPTIONS]
 Options:
   --no-interactive     Run without user interaction
   --no-firmware        Skip firmware updates
-  --no-system-update   Skip system package updates
+  --no-update-system   Skip system package updates
   --no-flatpak         Skip Flatpak updates
   --no-kernel-cleanup  Skip removal of old kernels
   --no-cache-clean     Skip cleaning package caches
   --no-hooks           Skip running hook scripts
+  --update-firmware    Update system firmware
+  --update-system      Update system packages
+  --update-flatpak     Perform Flatpak updates
+  --kernel-cleanup     Remove old kernels and headers
+  --cache-clean        Clean all apt package caches
+  --hooks              Run hook scripts
   --install            Create configuration files and hook directories
   --help               Display this help message
 
@@ -172,11 +178,17 @@ Parse_Arguments() {
 		case "$arg" in
 			"--no-interactive") INTERACTIVE=false ;;
 			"--no-firmware") ENABLE_FIRMWARE_UPDATE=false ;;
-			"--no-system-update") ENABLE_SYSTEM_UPDATE=false ;;
+			"--no-update-system") ENABLE_SYSTEM_UPDATE=false ;;
 			"--no-flatpak") ENABLE_FLATPAK_UPDATE=false ;;
 			"--no-kernel-cleanup") ENABLE_KERNEL_CLEANUP=false ;;
 			"--no-cache-clean") ENABLE_CACHE_CLEAN=false ;;
 			"--no-hooks") ENABLE_HOOKS=false ;;
+			"--update-firmware") ENABLE_FIRMWARE_UPDATE=true ;;
+			"--update-system") ENABLE_SYSTEM_UPDATE=true ;;
+			"--update-flatpak") ENABLE_FLATPAK_UPDATE=true ;;
+			"--kernel-cleanup") ENABLE_KERNEL_CLEANUP=true ;;
+			"--cache-clean") ENABLE_CACHE_CLEAN=true ;;
+			"--hooks") ENABLE_HOOKS=true ;;
 			"--install") Create_Config; Create_Hook_Dirs; exit 0 ;;
 			"--help") Show_Help; exit 0 ;;
 			*) cecho "[FATAL] Unknown argument: $arg" red ; Show_Help ; exit 1 ;;
@@ -379,25 +391,22 @@ Sanity_Check ()
 			read -r -p "==> " REPLY
 			case "$REPLY" in
 				( [yY]|[yY][eE][sS] )
-					( $APTITUDEBIN update && $APTITUDEBIN -y install git ) || Error_Handler
+					( $APTITUDEBIN update && $APTITUDEBIN -y install git ) || Warn_Handler
 					GITBIN="$(which git)"  # Update after install
 					if [ ! -f "$GITBIN" ]; then
 						cecho "[ERROR] Failed to locate git binary after installation." red
-						Error_Handler
-					fi
-					;;
-				*)
-					if [ "$INTERACTIVE" = "true" ]; then
-						echo
-						Error_Handler
-					else
-						cecho "[INFO] Disabling firmware updates due to missing git." cyan
+						cecho "[WARNING] Disabling firmware updates due to missing git." boldyellow
 						ENABLE_FIRMWARE_UPDATE=false
 					fi
 					;;
+				*)
+					echo
+					cecho "[WARNING] Disabling firmware updates due to missing git." boldyellow
+					ENABLE_FIRMWARE_UPDATE=false
+					;;
 			esac
 		else
-			cecho "[INFO] Non-interactive mode: Installing git automatically." cyan
+			cecho "[INFO] Non-interactive mode: Firmware updates are enabled, installing git automatically." cyan
 			( $APTITUDEBIN update && $APTITUDEBIN -y install git ) || {
 				cecho "[WARNING] Failed to install git, disabling firmware updates." boldyellow
 							ENABLE_FIRMWARE_UPDATE=false
@@ -406,6 +415,7 @@ Sanity_Check ()
 							GITBIN="$(which git)"  # Update after install
 							if [ ! -f "$GITBIN" ]; then
 								cecho "[ERROR] Failed to locate git binary after installation." red
+								cecho "[WARNING] Disabling firmware updates due to missing git." boldyellow
 								ENABLE_FIRMWARE_UPDATE=false
 							fi
 						fi
@@ -559,14 +569,17 @@ Kernel_Cleanup() {
 	# Process kernel headers - get all installed header packages
 	HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
 	for header_pkg in $HEADER_PACKAGES; do
-		# Extract kernel version from header package name
-		# Remove the 'linux-headers-' prefix and any architecture suffix (-amd64, -common)
-		kernel_version=$(echo "$header_pkg" | sed 's/^linux-headers-//' | sed -E 's/(-amd64|-common)$//')
 		should_keep=false
 
 		# Check if this header package matches any kernel we want to keep
 		for keep_version in $KERNELS_TO_KEEP; do
-			if [ "$kernel_version" = "$keep_version" ]; then
+			# Extract the base kernel version (without architecture suffix)
+			# e.g., 6.1.0-37-amd64 -> 6.1.0-37
+			base_version=$(echo "$keep_version" | sed -E 's/-[^-]+$//')
+			# Check if the header package matches either:
+			# 1. The full kernel version (e.g., linux-headers-6.1.0-37-amd64)
+			# 2. The base version + -common (e.g., linux-headers-6.1.0-37-common)
+			if [ "$header_pkg" = "linux-headers-${keep_version}" ] || [ "$header_pkg" = "linux-headers-${base_version}-common" ]; then
 				should_keep=true
 				cecho "[INFO] Keeping headers for kernel $keep_version: $header_pkg" cyan
 				break
@@ -664,18 +677,6 @@ for CURRENT_EXPORT in ${EXPORT_VARS}; do
 	export "${CURRENT_EXPORT?}"
 done
 
-if [ "$ENABLE_FIRMWARE_UPDATE" = "true" ]; then
-	cecho " ________________________________ " boldblue
-	cecho "/ Updating kernel firmware...    \ " boldblue
-	cecho "\________________________________/ " boldblue
-	Update_Firmware
-else
-	cecho " ________________________________ " boldblue
-	cecho "/ Skipping firmware updates...   \ " boldblue
-	cecho "\________________________________/ " boldblue
-	cecho "[INFO] Firmware updates disabled." cyan
-fi
-
 if [ "$ENABLE_SYSTEM_UPDATE" = "true" ]; then
 	cecho " ________________________________ " boldblue
 	cecho "/ Checking for updated files...  \ " boldblue
@@ -709,6 +710,18 @@ else
 	cecho "/ Skipping flatpak updates...    \ " boldblue
 	cecho "\________________________________/ " boldblue
 	cecho "[INFO] Flatpak updates disabled or flatpak not installed." cyan
+fi
+
+if [ "$ENABLE_FIRMWARE_UPDATE" = "true" ]; then
+	cecho " ________________________________ " boldblue
+	cecho "/ Updating kernel firmware...    \ " boldblue
+	cecho "\________________________________/ " boldblue
+	Update_Firmware
+else
+	cecho " ________________________________ " boldblue
+	cecho "/ Skipping firmware updates...   \ " boldblue
+	cecho "\________________________________/ " boldblue
+	cecho "[INFO] Firmware updates disabled." cyan
 fi
 
 if [ "$ENABLE_CACHE_CLEAN" = "true" ]; then

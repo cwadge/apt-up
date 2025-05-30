@@ -76,15 +76,21 @@ sudo apt-up --no-interactive
 ```
 ### Options
 ```
---no-interactive     Run without prompts
---no-firmware        Skip firmware updates
---no-system-update   Skip system package updates
---no-flatpak         Skip Flatpak updates
---no-kernel-cleanup  Skip old kernel removal
---no-cache-clean     Skip cache cleaning
+--no-interactive     Run without user interaction
+--no-firmware        Skip firmware updates
+--no-update-system   Skip system package updates
+--no-flatpak         Skip Flatpak updates
+--no-kernel-cleanup  Skip removal of old kernels
+--no-cache-clean     Skip cleaning package caches
 --no-hooks           Skip running hook scripts
---install            Create config and hook directories
---help               Show help message
+--update-firmware    Update system firmware
+--update-system      Update system packages
+--update-flatpak     Perform Flatpak updates
+--kernel-cleanup     Remove old kernels and headers
+--cache-clean        Clean all apt package caches
+--hooks              Run hook scripts
+--install            Create configuration files and hook directories
+--help               Display this help message
 ```
 ### Configuration
 
@@ -93,68 +99,79 @@ Edit `/etc/apt-up.conf` (after optional `sudo apt-up --install`).
 ## Example Run
 Here’s what it looks like in action, checking for firmware & system updates, then running a custom hook script:
 ```
-$ sudo apt-up
 [INFO] Loading configuration from /etc/apt-up.conf
 [INFO] Running pre hooks
- ________________________________ 
-/ Exporting global variables...  \ 
-\________________________________/ 
+ ________________________________
+/ Exporting global variables...  \
+\________________________________/
 [INFO] Exporting: IGNORE_CC_MISMATCH=1
-[INFO] Exporting: GE_PROTON_TARGET=/home/chris/.steam/steam/compatibilitytools.d
- ________________________________ 
-/ Updating kernel firmware...    \ 
-\________________________________/ 
+[INFO] Exporting: GE_PROTON_TARGET=/home/my_account/.steam/steam/compatibilitytools.d
+ ________________________________
+/ Checking for updated files...  \
+\________________________________/
+Hit https://security.debian.org/debian-security bookworm-security InRelease
+Hit https://deb.debian.org/debian bookworm InRelease
+Hit https://deb.debian.org/debian bookworm-updates InRelease
+Hit https://deb.debian.org/debian bookworm-backports InRelease
+Hit https://brave-browser-apt-release.s3.brave.com stable InRelease
+Hit https://repo.steampowered.com/steam stable InRelease
+Hit https://deb.xanmod.org releases InRelease
+Hit https://www.deb-multimedia.org bookworm InRelease
+Hit https://www.deb-multimedia.org bookworm-backports InRelease
+Hit https://download.opensuse.org/repositories/home:/strycore/Debian_12 ./ InRelease
+
+ ________________________________
+/ Updating files if necessary... \
+\________________________________/
+No packages will be installed, upgraded, or removed.
+0 packages upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Need to get 0 B of archives. After unpacking 0 B will be used.
+
+ ________________________________
+/ Updating flatpak packages...   \
+\________________________________/
+Looking for updates…
+
+Nothing to do.
+ ________________________________
+/ Updating kernel firmware...    \
+\________________________________/
 [INFO] Checking for firmware updates...
 remote: Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
 From https://gitlab.com/kernel-firmware/linux-firmware
  * branch            main       -> FETCH_HEAD
-HEAD is now at 94e4d27 Merge branch 'main' into 'main'
+HEAD is now at f2e9c60 Merge branch 'robot/pr-0-1748597148' into 'main'
 [INFO] Firmware already up to date.
- ________________________________ 
-/ Checking for updated files...  \ 
-\________________________________/ 
-...
-
- ________________________________ 
-/ Updating files if necessary... \ 
-\________________________________/ 
-No packages will be installed, upgraded, or removed.
-0 packages upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
-Need to get 0 B of archives. After unpacking 0 B will be used.
-                                         
- ________________________________ 
-/ Updating flatpak packages...   \ 
-\________________________________/ 
-Looking for updates…
-
-Nothing to do.
- ________________________________ 
-/ Cleaning out the apt cache...  \ 
-\________________________________/ 
+ ________________________________
+/ Cleaning out the apt cache...  \
+\________________________________/
 [INFO] Finished cleaning cache.
- ________________________________ 
-/ Purge old kernels & headers... \ 
-\________________________________/ 
+ ________________________________
+/ Purge old kernels & headers... \
+\________________________________/
+[INFO] Current running kernel: 6.14.9-x64v3-xanmod1
+[INFO] Latest installed kernel: 6.14.9-x64v3-xanmod1
+[INFO] Only one kernel installed, keeping: 6.14.9-x64v3-xanmod1
+[INFO] Keeping headers for kernel 6.14.9-x64v3-xanmod1: linux-headers-6.14.9-x64v3-xanmod1
 [INFO] No old kernels or headers to remove.
- ________________________________ 
-/ Syncing buffers out to disk... \ 
-\________________________________/ 
+ ________________________________
+/ Syncing buffers out to disk... \
+\________________________________/
 [INFO] Running post hooks
 [INFO] Running hook: 50-ge-proton
 Checking for GE-Proton updates...
-Using overridden Steam directory: /home/chris/.steam/steam/compatibilitytools.d
-Latest version: GE-Proton9-27
-GE-Proton9-27 already installed at /home/chris/.steam/steam/compatibilitytools.d/GE-Proton9-27
+Using overridden Steam directory: /home/my_account/.steam/steam/compatibilitytools.d
+Latest version: GE-Proton10-3
+GE-Proton10-3 already installed at /home/my_account/.steam/steam/compatibilitytools.d/GE-Proton10-3
 No installation needed.
 Cleaning up old GE-Proton versions...
 No old versions to clean up.
 Done!
- ________________________________ 
-/           Finished.            \ 
-\________________________________/ 
-
+ ________________________________
+/           Finished.            \
+\________________________________/
 ```
-Normally output is color-coded, if the terminal supports it.
+(Normally output is color-coded, if the terminal supports it.)
 
 ## Hooks
 If you want to extend apt-up's functionality, you can add custom scripts to:
@@ -164,7 +181,7 @@ If you want to extend apt-up's functionality, you can add custom scripts to:
 
 - `/etc/apt-up.d/fail.d/` (on failure).
 
-Scripts with '`critical`' in the name (e.g. `00-critical-check.sh`) halt execution if they fail.
+NOTE: Scripts with '`critical`' in the name (e.g. `00-critical-check.sh`) halt execution if they fail.
 
 Run `sudo apt-up --install` to create these directories (with a sample hook in `pre.d`).
 
