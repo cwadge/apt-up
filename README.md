@@ -88,7 +88,7 @@ sudo apt-up --no-interactive
 --update-flatpak     Perform Flatpak updates
 --kernel-cleanup     Remove old kernels and headers
 --cache-clean        Clean all apt package caches
---hooks              Run hook scripts
+--run-hooks          Run scripts in hook directories
 --install            Create configuration files and hook directories
 --help               Display this help message
 ```

@@ -164,7 +164,7 @@ Options:
   --update-flatpak     Perform Flatpak updates
   --kernel-cleanup     Remove old kernels and headers
   --cache-clean        Clean all apt package caches
-  --hooks              Run hook scripts
+  --run-hooks          Run scripts in hook directories
   --install            Create configuration files and hook directories
   --help               Display this help message
 
@@ -188,7 +188,7 @@ Parse_Arguments() {
 			"--update-flatpak") ENABLE_FLATPAK_UPDATE=true ;;
 			"--kernel-cleanup") ENABLE_KERNEL_CLEANUP=true ;;
 			"--cache-clean") ENABLE_CACHE_CLEAN=true ;;
-			"--hooks") ENABLE_HOOKS=true ;;
+			"--run-hooks") ENABLE_HOOKS=true ;;
 			"--install") Create_Config; Create_Hook_Dirs; exit 0 ;;
 			"--help") Show_Help; exit 0 ;;
 			*) cecho "[FATAL] Unknown argument: $arg" red ; Show_Help ; exit 1 ;;
