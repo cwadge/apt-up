@@ -159,6 +159,7 @@ Options:
   --no-kernel-cleanup  Skip removal of old kernels
   --no-cache-clean     Skip cleaning package caches
   --no-hooks           Skip running hook scripts
+  --interactive        Run the script in interactive mode
   --update-firmware    Update system firmware
   --update-system      Update system packages
   --update-flatpak     Perform Flatpak updates
@@ -183,6 +184,7 @@ Parse_Arguments() {
 			"--no-kernel-cleanup") ENABLE_KERNEL_CLEANUP=false ;;
 			"--no-cache-clean") ENABLE_CACHE_CLEAN=false ;;
 			"--no-hooks") ENABLE_HOOKS=false ;;
+			"--interactive") INTERACTIVE=true ;;
 			"--update-firmware") ENABLE_FIRMWARE_UPDATE=true ;;
 			"--update-system") ENABLE_SYSTEM_UPDATE=true ;;
 			"--update-flatpak") ENABLE_FLATPAK_UPDATE=true ;;

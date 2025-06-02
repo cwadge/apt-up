@@ -83,6 +83,7 @@ sudo apt-up --no-interactive
 --no-kernel-cleanup  Skip removal of old kernels
 --no-cache-clean     Skip cleaning package caches
 --no-hooks           Skip running hook scripts
+--interactive        Run the script in interactive mode
 --update-firmware    Update system firmware
 --update-system      Update system packages
 --update-flatpak     Perform Flatpak updates
