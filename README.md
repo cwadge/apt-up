@@ -37,12 +37,12 @@ Built with flexibility and extensibility in mind, it supports colored output, in
 
   - `git` (for firmware updates).
 
-  - `ionice` (for I/O priority in non-interactive mode).
+  - `ionice` (for lower I/O priority in non-interactive mode).
 
 ## Installation
 Download:
 ```bash
-curl -sL https://raw.githubusercontent.com/cwadge/apt-up/main/apt-up -o apt-up
+wget https://raw.githubusercontent.com/cwadge/apt-up/main/apt-up -O apt-up
 ```
 Or clone the repo:
 ```bash
