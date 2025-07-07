@@ -101,22 +101,25 @@ Edit `/etc/apt-up.conf` (after optional `sudo apt-up --install`).
 Here’s what it looks like in action, checking for firmware & system updates, then running a custom hook script:
 ```
 [INFO] Loading configuration from /etc/apt-up.conf
+ ________________________________
+/ Running pre hook scripts...    \
+\________________________________/
 [INFO] Running pre hooks
  ________________________________
 / Exporting global variables...  \
 \________________________________/
 [INFO] Exporting: IGNORE_CC_MISMATCH=1
-[INFO] Exporting: GE_PROTON_TARGET=/home/my_account/.steam/steam/compatibilitytools.d
+[INFO] Exporting: GE_PROTON_TARGET=/home/gamer_account/.steam/steam/compatibilitytools.d
  ________________________________
 / Checking for updated files...  \
 \________________________________/
+Hit http://deb.xanmod.org releases InRelease
 Hit https://security.debian.org/debian-security bookworm-security InRelease
 Hit https://deb.debian.org/debian bookworm InRelease
 Hit https://deb.debian.org/debian bookworm-updates InRelease
-Hit https://deb.debian.org/debian bookworm-backports InRelease
 Hit https://brave-browser-apt-release.s3.brave.com stable InRelease
+Hit https://deb.debian.org/debian bookworm-backports InRelease
 Hit https://repo.steampowered.com/steam stable InRelease
-Hit https://deb.xanmod.org releases InRelease
 Hit https://www.deb-multimedia.org bookworm InRelease
 Hit https://www.deb-multimedia.org bookworm-backports InRelease
 Hit https://download.opensuse.org/repositories/home:/strycore/Debian_12 ./ InRelease
@@ -135,35 +138,40 @@ Looking for updates…
 
 Nothing to do.
  ________________________________
-/ Updating kernel firmware...    \
-\________________________________/
-[INFO] Checking for firmware updates...
-remote: Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
-From https://gitlab.com/kernel-firmware/linux-firmware
- * branch            main       -> FETCH_HEAD
-HEAD is now at f2e9c60 Merge branch 'robot/pr-0-1748597148' into 'main'
-[INFO] Firmware already up to date.
- ________________________________
 / Cleaning out the apt cache...  \
 \________________________________/
 [INFO] Finished cleaning cache.
  ________________________________
 / Purge old kernels & headers... \
 \________________________________/
-[INFO] Current running kernel: 6.14.9-x64v3-xanmod1
-[INFO] Latest installed kernel: 6.14.9-x64v3-xanmod1
-[INFO] Only one kernel installed, keeping: 6.14.9-x64v3-xanmod1
-[INFO] Keeping headers for kernel 6.14.9-x64v3-xanmod1: linux-headers-6.14.9-x64v3-xanmod1
+[INFO] Current running kernel: 6.15.5-x64v3-xanmod1
+[INFO] Latest installed kernel: 6.15.5-x64v3-xanmod1
+[INFO] Current kernel is latest, keeping: 6.15.5-x64v3-xanmod1 and previous: 6.15.4-x64v3-xanmod1
+[INFO] Keeping headers for kernel 6.15.4-x64v3-xanmod1: linux-headers-6.15.4-x64v3-xanmod1
+[INFO] Keeping headers for kernel 6.15.5-x64v3-xanmod1: linux-headers-6.15.5-x64v3-xanmod1
 [INFO] No old kernels or headers to remove.
  ________________________________
+/ Updating kernel firmware...    \
+\________________________________/
+[INFO] Checking for firmware updates...
+remote: Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+From https://gitlab.com/kernel-firmware/linux-firmware
+ * branch            main       -> FETCH_HEAD
+HEAD is now at 2208e9f Merge branch 'intel/fan_control_8086_e20b_8086_1100' into 'main'
+[INFO] Firmware already up to date.
+ ________________________________
 / Syncing buffers out to disk... \
+\________________________________/
+[INFO] Disk sync completed successfully.
+ ________________________________
+/ Running post hook scripts...   \
 \________________________________/
 [INFO] Running post hooks
 [INFO] Running hook: 50-ge-proton
 Checking for GE-Proton updates...
-Using overridden Steam directory: /home/my_account/.steam/steam/compatibilitytools.d
-Latest version: GE-Proton10-3
-GE-Proton10-3 already installed at /home/my_account/.steam/steam/compatibilitytools.d/GE-Proton10-3
+Using overridden Steam directory: /home/gamer_account/.steam/steam/compatibilitytools.d
+Latest version: GE-Proton10-8
+GE-Proton10-8 already installed at /home/gamer_account/.steam/steam/compatibilitytools.d/GE-Proton10-8
 No installation needed.
 Cleaning up old GE-Proton versions...
 No old versions to clean up.

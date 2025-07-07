@@ -667,8 +667,17 @@ else
 	APT_OPTS=""
 fi
 
-# Run pre-update hooks
-Run_Hooks "pre"
+if [ "$ENABLE_HOOKS" = "true" ]; then
+	cecho " ________________________________ " boldblue
+	cecho "/ Running pre hook scripts...    \ " boldblue
+	cecho "\________________________________/ " boldblue
+	Run_Hooks "pre"
+else
+	cecho " ________________________________ " boldblue
+	cecho "/ Skipping pre hook scripts...   \ " boldblue
+	cecho "\________________________________/ " boldblue
+	cecho "[INFO] Running hook scripts disabled." cyan
+fi
 
 cecho " ________________________________ " boldblue
 cecho "/ Exporting global variables...  \ " boldblue
@@ -714,18 +723,6 @@ else
 	cecho "[INFO] Flatpak updates disabled or flatpak not installed." cyan
 fi
 
-if [ "$ENABLE_FIRMWARE_UPDATE" = "true" ]; then
-	cecho " ________________________________ " boldblue
-	cecho "/ Updating kernel firmware...    \ " boldblue
-	cecho "\________________________________/ " boldblue
-	Update_Firmware
-else
-	cecho " ________________________________ " boldblue
-	cecho "/ Skipping firmware updates...   \ " boldblue
-	cecho "\________________________________/ " boldblue
-	cecho "[INFO] Firmware updates disabled." cyan
-fi
-
 if [ "$ENABLE_CACHE_CLEAN" = "true" ]; then
 	cecho " ________________________________ " boldblue
 	cecho "/ Cleaning out the apt cache...  \ " boldblue
@@ -756,15 +753,40 @@ else
 	cecho "[INFO] Kernel cleanup disabled." cyan
 fi
 
+if [ "$ENABLE_FIRMWARE_UPDATE" = "true" ]; then
+	cecho " ________________________________ " boldblue
+	cecho "/ Updating kernel firmware...    \ " boldblue
+	cecho "\________________________________/ " boldblue
+	Update_Firmware
+else
+	cecho " ________________________________ " boldblue
+	cecho "/ Skipping firmware updates...   \ " boldblue
+	cecho "\________________________________/ " boldblue
+	cecho "[INFO] Firmware updates disabled." cyan
+fi
+
 cecho " ________________________________ " boldblue
 cecho "/ Syncing buffers out to disk... \ " boldblue
 cecho "\________________________________/ " boldblue
 CURRENT_STEP="syncing writes out to disk"
-# 60s should be plenty for slow or busy machines
-timeout 60s sync || Warn_Handler
+if timeout 60s sync; then
+	cecho "[INFO] Disk sync completed successfully." cyan
+else
+	Warn_Handler
+fi
 
-# Run post-update hooks
-Run_Hooks "post"
+if [ "$ENABLE_HOOKS" = "true" ]; then
+	cecho " ________________________________ " boldblue
+	cecho "/ Running post hook scripts...   \ " boldblue
+	cecho "\________________________________/ " boldblue
+	Run_Hooks "post"
+else
+	cecho " ________________________________ " boldblue
+	cecho "/ Skipping post hook scripts...  \ " boldblue
+	cecho "\________________________________/ " boldblue
+	cecho "[INFO] Running hook scripts disabled." cyan
+fi
+
 
 # Close log file if enabled
 if [ "$ENABLE_LOGGING" = "true" ]; then
