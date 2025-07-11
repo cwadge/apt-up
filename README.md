@@ -102,7 +102,7 @@ Here’s what it looks like in action, checking for firmware & system updates, t
 ```
 [INFO] Loading configuration from /etc/apt-up.conf
  ________________________________
-/ Running pre hook scripts...    \
+/ Running pre-update scripts...  \
 \________________________________/
 [INFO] Running pre hooks
  ________________________________
@@ -164,7 +164,7 @@ HEAD is now at 2208e9f Merge branch 'intel/fan_control_8086_e20b_8086_1100' into
 \________________________________/
 [INFO] Disk sync completed successfully.
  ________________________________
-/ Running post hook scripts...   \
+/ Running post-update scripts... \
 \________________________________/
 [INFO] Running post hooks
 [INFO] Running hook: 50-ge-proton

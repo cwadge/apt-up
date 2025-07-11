@@ -669,12 +669,12 @@ fi
 
 if [ "$ENABLE_HOOKS" = "true" ]; then
 	cecho " ________________________________ " boldblue
-	cecho "/ Running pre hook scripts...    \ " boldblue
+	cecho "/ Running pre-update scripts...  \ " boldblue
 	cecho "\________________________________/ " boldblue
 	Run_Hooks "pre"
 else
 	cecho " ________________________________ " boldblue
-	cecho "/ Skipping pre hook scripts...   \ " boldblue
+	cecho "/ Skipping pre-update scripts... \ " boldblue
 	cecho "\________________________________/ " boldblue
 	cecho "[INFO] Running hook scripts disabled." cyan
 fi
@@ -777,12 +777,12 @@ fi
 
 if [ "$ENABLE_HOOKS" = "true" ]; then
 	cecho " ________________________________ " boldblue
-	cecho "/ Running post hook scripts...   \ " boldblue
+	cecho "/ Running post-update scripts... \ " boldblue
 	cecho "\________________________________/ " boldblue
 	Run_Hooks "post"
 else
 	cecho " ________________________________ " boldblue
-	cecho "/ Skipping post hook scripts...  \ " boldblue
+	cecho "/ Skipping post-update scripts...\ " boldblue
 	cecho "\________________________________/ " boldblue
 	cecho "[INFO] Running hook scripts disabled." cyan
 fi
