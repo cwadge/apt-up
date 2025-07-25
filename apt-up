@@ -431,7 +431,7 @@ Sanity_Check ()
 Install_Aptitude ()
 {
 	CURRENT_STEP="installing aptitude"
-	$APTGETBIN update || Error_Handler
+	$APTGETBIN update || Warn_Handler
 	$APTGETBIN -y install aptitude || Error_Handler
 }
 
