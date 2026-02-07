@@ -108,13 +108,13 @@ Print_Header() {
 	local color="${2:-boldblue}"
 	local total_width=66  # Total width of the box with border characters
 	local content_width=64  # Width between the ║ characters
-	
+
 	# Calculate padding
 	local msg_len=${#message}
 	local padding_total=$((content_width - msg_len))
 	local padding_left=$((padding_total / 2))
 	local padding_right=$((padding_total - padding_left))
-	
+
 	# Set color based on parameter
 	case $color in
 		black) printf '%b' "$black" ;;
@@ -134,12 +134,12 @@ Print_Header() {
 		white) printf '%b' "$white" ;;
 		boldwhite) printf '%b' "$boldwhite" ;;
 	esac
-	
+
 	# Print the header
 	printf "╔════════════════════════════════════════════════════════════════╗\n"
 	printf "║%*s%s%*s║\n" $padding_left "" "$message" $padding_right ""
 	printf "╚════════════════════════════════════════════════════════════════╝\n"
-	
+
 	# Reset color
 	tput sgr0
 	printf '%b' "$black"
@@ -276,8 +276,8 @@ FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
 ENABLE_FIRMWARE_UPDATE=true
 ENABLE_SYSTEM_UPDATE=true
 # ENABLE_DIST_UPGRADE=false  # WARNING: Only enable when performing major version upgrades
-                             # Ensure /etc/apt/sources.list points to new release first
-                             # Uses 'apt full-upgrade' instead of 'aptitude full-upgrade'
+			     # Ensure /etc/apt/sources.list points to new release first
+			     # Uses 'apt full-upgrade' instead of 'aptitude full-upgrade'
 ENABLE_FLATPAK_UPDATE=true
 ENABLE_KERNEL_CLEANUP=true
 ENABLE_CACHE_CLEAN=true
@@ -344,30 +344,30 @@ Run_Hooks() {
 		return 0
 	fi
 	cecho "[INFO] Running $hook_type hooks" cyan
-	
+
 	# In dry-run mode, just list what would be run
 	if [ "$DRY_RUN" = "true" ]; then
 		find "$hooks_path" -type f -executable | sort | while read -r hook; do
-			hook_name=$(basename "$hook")
-			cecho "[DRY-RUN] Would run hook: $hook_name" cyan
-		done
-		return 0
+		hook_name=$(basename "$hook")
+		cecho "[DRY-RUN] Would run hook: $hook_name" cyan
+	done
+	return 0
 	fi
-	
+
 	# Normal execution
 	find "$hooks_path" -type f -executable | sort | while read -r hook; do
-		hook_name=$(basename "$hook")
-		cecho "[INFO] Running hook: $hook_name" cyan
-		"$hook"
-		hook_status=$?  # Capture the hook's exit code immediately
-		if [ "$hook_status" -ne 0 ]; then
-			Warn_Handler
-			if [[ "$hook_name" =~ ^[0-9][0-9]-critical- ]]; then
-				cecho "[ERROR] Critical hook $hook_name failed with exit code $hook_status, aborting." red
-				Error_Handler
-			fi
+	hook_name=$(basename "$hook")
+	cecho "[INFO] Running hook: $hook_name" cyan
+	"$hook"
+	hook_status=$?  # Capture the hook's exit code immediately
+	if [ "$hook_status" -ne 0 ]; then
+		Warn_Handler
+		if [[ "$hook_name" =~ ^[0-9][0-9]-critical- ]]; then
+			cecho "[ERROR] Critical hook $hook_name failed with exit code $hook_status, aborting." red
+			Error_Handler
 		fi
-	done
+	fi
+done
 }
 
 Initialize_Logging() {
@@ -585,98 +585,98 @@ Update_Firmware ()
 Update_Firmware_DryRun() {
 	CURRENT_STEP="checking firmware update status (dry-run)"
 	FIRMWARE_DIR="/var/cache/linux-firmware"
-	
+
 	if [ ! -d "$FIRMWARE_DIR" ]; then
 		cecho "[DRY-RUN] Would clone linux-firmware repository from $FIRMWARE_GIT_URL" cyan
 		return 0
 	fi
-	
+
 	cecho "[DRY-RUN] Checking for firmware updates..." cyan
 	cd "$FIRMWARE_DIR" || Error_Handler
-	
+
 	# Get current local hash
 	OLD_HASH=$($GITBIN rev-parse HEAD 2>/dev/null) || {
 		cecho "[DRY-RUN] Would update existing firmware repository" cyan
-		return 0
-	}
-	
+			return 0
+		}
+
 	# Check remote without fetching using ls-remote
 	REMOTE_HASH=$($GITBIN ls-remote "$FIRMWARE_GIT_URL" HEAD 2>/dev/null | awk '{print $1}') || {
 		cecho "[DRY-RUN] Could not check remote firmware repository" yellow
-		return 0
-	}
-	
-	if [ -z "$REMOTE_HASH" ]; then
-		cecho "[DRY-RUN] Could not determine remote firmware version" yellow
-		return 0
-	fi
-	
-	if [ "$OLD_HASH" != "$REMOTE_HASH" ]; then
-		cecho "[DRY-RUN] New firmware available:" cyan
-		cecho "[DRY-RUN]   Current: ${OLD_HASH:0:7}" cyan
-		cecho "[DRY-RUN]   Remote:  ${REMOTE_HASH:0:7}" cyan
-		cecho "[DRY-RUN] Would update firmware files in /lib/firmware" cyan
-		cecho "[DRY-RUN] Would update initramfs for all kernels" cyan
-	else
-		cecho "[DRY-RUN] Firmware already up to date" cyan
-	fi
-}
+			return 0
+		}
 
-Kernel_Cleanup() {
-	CURRENT_STEP="removing unneeded kernels and headers"
-	# Get current running kernel version
-	CURRENT_KERNEL=$(uname -r)
-	cecho "[INFO] Current running kernel: $CURRENT_KERNEL" cyan
-	# Get all installed kernel image packages (excluding meta-packages)
-	KERNEL_IMAGES=$($DPKGBIN --list | awk '/^ii  linux-image-[0-9]/ { print $2 }' | sort -V) || Bypass_Handler
-	# Get all kernel meta packages to preserve them
-	KERNEL_META_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-(image-)?[a-zA-Z]/ { if ($2 !~ /^linux-image-[0-9]/ && $2 !~ /^linux-headers-[0-9]/) print $2 }' | sort) || Bypass_Handler
-	if [ -z "$KERNEL_IMAGES" ]; then
-		cecho "[INFO] No versioned kernel packages found." cyan
-		return 0
-	fi
-	# Find the latest kernel version (highest version number)
-	LATEST_KERNEL=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 1)
-	cecho "[INFO] Latest installed kernel: $LATEST_KERNEL" cyan
-	# Determine which kernels to keep (always try to keep at least 2 for safety)
-	KERNELS_TO_KEEP=""
-	if [ "$CURRENT_KERNEL" = "$LATEST_KERNEL" ]; then
-		# Current and latest are the same, find the second-newest kernel
-		SECOND_LATEST=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 2 | head -n 1)
-		if [ -n "$SECOND_LATEST" ] && [ "$SECOND_LATEST" != "$LATEST_KERNEL" ]; then
-			KERNELS_TO_KEEP="$CURRENT_KERNEL $SECOND_LATEST"
-			cecho "[INFO] Current kernel is latest, keeping: $CURRENT_KERNEL and previous: $SECOND_LATEST" cyan
-		else
-			# Only one kernel installed
-			KERNELS_TO_KEEP="$CURRENT_KERNEL"
-			cecho "[INFO] Only one kernel installed, keeping: $CURRENT_KERNEL" cyan
+		if [ -z "$REMOTE_HASH" ]; then
+			cecho "[DRY-RUN] Could not determine remote firmware version" yellow
+			return 0
 		fi
-	else
-		# Keep both current and latest
-		KERNELS_TO_KEEP="$CURRENT_KERNEL $LATEST_KERNEL"
-		cecho "[INFO] Keeping current kernel: $CURRENT_KERNEL and latest kernel: $LATEST_KERNEL" cyan
-	fi
-	# Build list of all packages to remove
-	PACKAGES_TO_REMOVE=""
-	# Process kernel images
-	for kernel_pkg in $KERNEL_IMAGES; do
-		kernel_version=${kernel_pkg#linux-image-}
-		should_keep=false
-		for keep_version in $KERNELS_TO_KEEP; do
-			if [ "$kernel_version" = "$keep_version" ]; then
-				should_keep=true
-				break
+
+		if [ "$OLD_HASH" != "$REMOTE_HASH" ]; then
+			cecho "[DRY-RUN] New firmware available:" cyan
+			cecho "[DRY-RUN]   Current: ${OLD_HASH:0:7}" cyan
+			cecho "[DRY-RUN]   Remote:  ${REMOTE_HASH:0:7}" cyan
+			cecho "[DRY-RUN] Would update firmware files in /lib/firmware" cyan
+			cecho "[DRY-RUN] Would update initramfs for all kernels" cyan
+		else
+			cecho "[DRY-RUN] Firmware already up to date" cyan
+		fi
+	}
+
+	Kernel_Cleanup() {
+		CURRENT_STEP="removing unneeded kernels and headers"
+		# Get current running kernel version
+		CURRENT_KERNEL=$(uname -r)
+		cecho "[INFO] Current running kernel: $CURRENT_KERNEL" cyan
+		# Get all installed kernel image packages (excluding meta-packages)
+		KERNEL_IMAGES=$($DPKGBIN --list | awk '/^ii  linux-image-[0-9]/ { print $2 }' | sort -V) || Bypass_Handler
+		# Get all kernel meta packages to preserve them
+		KERNEL_META_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-(image-)?[a-zA-Z]/ { if ($2 !~ /^linux-image-[0-9]/ && $2 !~ /^linux-headers-[0-9]/) print $2 }' | sort) || Bypass_Handler
+		if [ -z "$KERNEL_IMAGES" ]; then
+			cecho "[INFO] No versioned kernel packages found." cyan
+			return 0
+		fi
+		# Find the latest kernel version (highest version number)
+		LATEST_KERNEL=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 1)
+		cecho "[INFO] Latest installed kernel: $LATEST_KERNEL" cyan
+		# Determine which kernels to keep (always try to keep at least 2 for safety)
+		KERNELS_TO_KEEP=""
+		if [ "$CURRENT_KERNEL" = "$LATEST_KERNEL" ]; then
+			# Current and latest are the same, find the second-newest kernel
+			SECOND_LATEST=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 2 | head -n 1)
+			if [ -n "$SECOND_LATEST" ] && [ "$SECOND_LATEST" != "$LATEST_KERNEL" ]; then
+				KERNELS_TO_KEEP="$CURRENT_KERNEL $SECOND_LATEST"
+				cecho "[INFO] Current kernel is latest, keeping: $CURRENT_KERNEL and previous: $SECOND_LATEST" cyan
+			else
+				# Only one kernel installed
+				KERNELS_TO_KEEP="$CURRENT_KERNEL"
+				cecho "[INFO] Only one kernel installed, keeping: $CURRENT_KERNEL" cyan
+			fi
+		else
+			# Keep both current and latest
+			KERNELS_TO_KEEP="$CURRENT_KERNEL $LATEST_KERNEL"
+			cecho "[INFO] Keeping current kernel: $CURRENT_KERNEL and latest kernel: $LATEST_KERNEL" cyan
+		fi
+		# Build list of all packages to remove
+		PACKAGES_TO_REMOVE=""
+		# Process kernel images
+		for kernel_pkg in $KERNEL_IMAGES; do
+			kernel_version=${kernel_pkg#linux-image-}
+			should_keep=false
+			for keep_version in $KERNELS_TO_KEEP; do
+				if [ "$kernel_version" = "$keep_version" ]; then
+					should_keep=true
+					break
+				fi
+			done
+			if [ "$should_keep" = "false" ]; then
+				PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $kernel_pkg"
+				cecho "[INFO] Marking for removal: $kernel_pkg" cyan
 			fi
 		done
-		if [ "$should_keep" = "false" ]; then
-			PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $kernel_pkg"
-			cecho "[INFO] Marking for removal: $kernel_pkg" cyan
-		fi
-	done
-	# Process kernel headers - get all installed header packages
-	HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
-	for header_pkg in $HEADER_PACKAGES; do
-		should_keep=false
+		# Process kernel headers - get all installed header packages
+		HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
+		for header_pkg in $HEADER_PACKAGES; do
+			should_keep=false
 
 		# Check if this header package matches any kernel we want to keep
 		for keep_version in $KERNELS_TO_KEEP; do
@@ -758,26 +758,26 @@ Kernel_Cleanup() {
 
 Kernel_Cleanup_DryRun() {
 	CURRENT_STEP="checking kernel cleanup status (dry-run)"
-	
+
 	# Get current running kernel version
 	CURRENT_KERNEL=$(uname -r)
 	cecho "[DRY-RUN] Current running kernel: $CURRENT_KERNEL" cyan
-	
+
 	# Get all installed kernel image packages (excluding meta-packages)
 	KERNEL_IMAGES=$($DPKGBIN --list | awk '/^ii  linux-image-[0-9]/ { print $2 }' | sort -V) || Bypass_Handler
-	
+
 	# Get all kernel meta packages to preserve them
 	KERNEL_META_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-(image-)?[a-zA-Z]/ { if ($2 !~ /^linux-image-[0-9]/ && $2 !~ /^linux-headers-[0-9]/) print $2 }' | sort) || Bypass_Handler
-	
+
 	if [ -z "$KERNEL_IMAGES" ]; then
 		cecho "[DRY-RUN] No versioned kernel packages found." cyan
 		return 0
 	fi
-	
+
 	# Find the latest kernel version (highest version number)
 	LATEST_KERNEL=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 1)
 	cecho "[DRY-RUN] Latest installed kernel: $LATEST_KERNEL" cyan
-	
+
 	# Determine which kernels to keep (always try to keep at least 2 for safety)
 	KERNELS_TO_KEEP=""
 	if [ "$CURRENT_KERNEL" = "$LATEST_KERNEL" ]; then
@@ -796,10 +796,10 @@ Kernel_Cleanup_DryRun() {
 		KERNELS_TO_KEEP="$CURRENT_KERNEL $LATEST_KERNEL"
 		cecho "[DRY-RUN] Would keep current: $CURRENT_KERNEL and latest: $LATEST_KERNEL" cyan
 	fi
-	
+
 	# Build list of all packages to remove
 	PACKAGES_TO_REMOVE=""
-	
+
 	# Process kernel images
 	for kernel_pkg in $KERNEL_IMAGES; do
 		kernel_version=${kernel_pkg#linux-image-}
@@ -814,7 +814,7 @@ Kernel_Cleanup_DryRun() {
 			PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $kernel_pkg"
 		fi
 	done
-	
+
 	# Process kernel headers
 	HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
 	for header_pkg in $HEADER_PACKAGES; do
@@ -830,10 +830,10 @@ Kernel_Cleanup_DryRun() {
 			PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $header_pkg"
 		fi
 	done
-	
+
 	# Clean up the package list
 	PACKAGES_TO_REMOVE=$(echo $PACKAGES_TO_REMOVE | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/^ *//;s/ *$//')
-	
+
 	# Filter out meta packages
 	if [ -n "$KERNEL_META_PACKAGES" ]; then
 		FILTERED_PACKAGES=""
@@ -851,13 +851,13 @@ Kernel_Cleanup_DryRun() {
 		done
 		PACKAGES_TO_REMOVE=$(echo $FILTERED_PACKAGES | sed 's/^ *//;s/ *$//')
 	fi
-	
+
 	if [ -n "$PACKAGES_TO_REMOVE" ]; then
 		cecho "[DRY-RUN] Would remove these packages:" boldcyan
 		for pkg in $PACKAGES_TO_REMOVE; do
 			cecho "[DRY-RUN]   - $pkg" cyan
 		done
-		
+
 		# Calculate approximate size savings
 		TOTAL_SIZE=$($DPKGBIN-query -W -f='${Installed-Size}\n' $PACKAGES_TO_REMOVE 2>/dev/null | awk '{sum+=$1} END {printf "%.1f MB", sum/1024}') || "unknown"
 		cecho "[DRY-RUN] Would free approximately: $TOTAL_SIZE" cyan
@@ -868,13 +868,13 @@ Kernel_Cleanup_DryRun() {
 
 Dist_Upgrade() {
 	CURRENT_STEP="performing distribution upgrade"
-	
+
 	# Check if sources.list exists and is readable
 	if [ ! -r /etc/apt/sources.list ]; then
 		cecho "[ERROR] Cannot read /etc/apt/sources.list" red
 		Error_Handler
 	fi
-	
+
 	# Provide warnings and guidance
 	cecho "[WARNING] Distribution upgrade mode enabled" boldyellow
 	cecho "[WARNING] This performs a major version upgrade using 'apt full-upgrade'" boldyellow
@@ -886,7 +886,7 @@ Dist_Upgrade() {
 	cecho "       4. Ensure you have adequate disk space" cyan
 	cecho "       5. Consider running from a terminal multiplexer (tmux/screen)" cyan
 	echo
-	
+
 	# Check if sources.list contains old/new release indicators
 	# This is a heuristic check - we can't definitively determine if sources are "ready"
 	# but we can warn if we see common patterns
@@ -895,7 +895,7 @@ Dist_Upgrade() {
 		cecho "          Check your sources configuration before proceeding" boldyellow
 		echo
 	fi
-	
+
 	if [ "$INTERACTIVE" = "true" ]; then
 		echo
 		cecho "[IMPORTANT] Distribution upgrades can take considerable time and may require" boldmagenta
@@ -917,50 +917,50 @@ Dist_Upgrade() {
 		cecho "[WARNING] This may fail if manual intervention is required" boldyellow
 		cecho "[INFO] Consider running interactively for better control" cyan
 	fi
-	
+
 	# Update package lists first
 	cecho "[INFO] Updating package lists..." cyan
 	$APTBIN update || {
 		cecho "[ERROR] Failed to update package lists" red
-		cecho "[ERROR] Check your sources.list configuration" red
-		Error_Handler
-	}
-	
+			cecho "[ERROR] Check your sources.list configuration" red
+			Error_Handler
+		}
+
 	# Perform minimal upgrade first (per Debian upgrade guide)
 	cecho "[INFO] Performing minimal upgrade first..." cyan
 	if [ "$INTERACTIVE" = "true" ]; then
 		$APTBIN upgrade || {
 			cecho "[ERROR] Minimal upgrade failed" red
-			Error_Handler
-		}
-	else
-		$APTBIN -y upgrade || {
-			cecho "[ERROR] Minimal upgrade failed" red
-			Error_Handler
-		}
+					Error_Handler
+				}
+			else
+				$APTBIN -y upgrade || {
+					cecho "[ERROR] Minimal upgrade failed" red
+									Error_Handler
+								}
 	fi
-	
+
 	# Now perform the full upgrade
 	cecho "[INFO] Performing full distribution upgrade..." cyan
 	cecho "[INFO] This may take a considerable amount of time..." cyan
-	
+
 	if [ "$INTERACTIVE" = "true" ]; then
 		$APTBIN full-upgrade || {
 			cecho "[ERROR] Distribution upgrade failed" red
-			cecho "[ERROR] System may be in an inconsistent state" red
-			cecho "[INFO] Run 'apt --fix-broken install' to attempt recovery" cyan
-			Error_Handler
-		}
-	else
-		# Non-interactive mode with DEBIAN_FRONTEND=noninteractive
-		DEBIAN_FRONTEND=noninteractive $APTBIN -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade || {
-			cecho "[ERROR] Distribution upgrade failed" red
-			cecho "[ERROR] System may be in an inconsistent state" red
-			cecho "[INFO] Run 'apt --fix-broken install' to attempt recovery" cyan
-			Error_Handler
-		}
+					cecho "[ERROR] System may be in an inconsistent state" red
+					cecho "[INFO] Run 'apt --fix-broken install' to attempt recovery" cyan
+					Error_Handler
+				}
+			else
+				# Non-interactive mode with DEBIAN_FRONTEND=noninteractive
+				DEBIAN_FRONTEND=noninteractive $APTBIN -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade || {
+					cecho "[ERROR] Distribution upgrade failed" red
+									cecho "[ERROR] System may be in an inconsistent state" red
+									cecho "[INFO] Run 'apt --fix-broken install' to attempt recovery" cyan
+									Error_Handler
+								}
 	fi
-	
+
 	cecho "[INFO] Distribution upgrade completed successfully" boldgreen
 	echo
 	cecho "[INFO] Post-upgrade recommendations:" cyan
@@ -973,13 +973,13 @@ Dist_Upgrade() {
 
 Dist_Upgrade_DryRun() {
 	CURRENT_STEP="simulating distribution upgrade (dry-run)"
-	
+
 	# Check if sources.list exists and is readable
 	if [ ! -r /etc/apt/sources.list ]; then
 		cecho "[DRY-RUN] Cannot read /etc/apt/sources.list" red
 		return 1
 	fi
-	
+
 	cecho "[DRY-RUN] Distribution upgrade simulation mode" boldcyan
 	echo
 	cecho "[DRY-RUN] Pre-upgrade checklist items to review:" cyan
@@ -988,30 +988,30 @@ Dist_Upgrade_DryRun() {
 	cecho "[DRY-RUN]   3. Review release notes for your distribution" cyan
 	cecho "[DRY-RUN]   4. Ensure adequate disk space available" cyan
 	echo
-	
+
 	# Check for old release indicators
 	if grep -qE '^\s*deb.*\s+(oldstable|oldoldstable)\s+' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null; then
 		cecho "[DRY-RUN] Sources may reference old release codenames" yellow
 	fi
-	
+
 	# Update package lists
 	cecho "[DRY-RUN] Downloading latest package lists from configured sources..." cyan
 	$APTBIN update || {
 		cecho "[DRY-RUN] Could not update package lists (check sources.list)" yellow
 	}
-	
+
 	# Simulate minimal upgrade
 	cecho "[DRY-RUN] Simulating minimal upgrade..." cyan
 	$APTBIN -s upgrade 2>/dev/null | grep -E '^(Inst|Remv|Conf)' | head -n 10 || Bypass_Handler
-	
+
 	# Simulate full upgrade
 	cecho "[DRY-RUN] Simulating full distribution upgrade..." cyan
 	$APTBIN -s full-upgrade 2>/dev/null | grep -E '^(Inst|Remv|Conf)' | head -n 20 || Bypass_Handler
-	
+
 	# Summary - grep -c already outputs "0" when no matches, no need for || echo "0"
 	UPGRADE_COUNT=$($APTBIN -s full-upgrade 2>/dev/null | grep -c '^Inst' || true)
 	REMOVE_COUNT=$($APTBIN -s full-upgrade 2>/dev/null | grep -c '^Remv' || true)
-	
+
 	echo
 	cecho "[DRY-RUN] Distribution upgrade summary:" boldcyan
 	cecho "[DRY-RUN]   Packages to upgrade: $UPGRADE_COUNT" cyan
@@ -1137,14 +1137,14 @@ if [ "$ENABLE_FLATPAK_UPDATE" = "true" ] && [ -f "$FLATPAKBIN" ]; then
 		if [ -n "$FLATPAK_UPDATES" ]; then
 			cecho "[DRY-RUN] Available Flatpak updates:" cyan
 			echo "$FLATPAK_UPDATES" | while read -r line; do
-				cecho "[DRY-RUN]   $line" cyan
-			done
-			UPDATE_COUNT=$($FLATPAKBIN remote-ls --updates 2>/dev/null | wc -l)
-			if [ "$UPDATE_COUNT" -gt 10 ]; then
-				cecho "[DRY-RUN] ... and $((UPDATE_COUNT - 10)) more updates" cyan
-			fi
-		else
-			cecho "[DRY-RUN] No Flatpak updates available" cyan
+			cecho "[DRY-RUN]   $line" cyan
+		done
+		UPDATE_COUNT=$($FLATPAKBIN remote-ls --updates 2>/dev/null | wc -l)
+		if [ "$UPDATE_COUNT" -gt 10 ]; then
+			cecho "[DRY-RUN] ... and $((UPDATE_COUNT - 10)) more updates" cyan
+		fi
+	else
+		cecho "[DRY-RUN] No Flatpak updates available" cyan
 		fi
 	elif [ "$INTERACTIVE" = "false" ]; then
 		$FLATPAKBIN update -y || Warn_Handler
