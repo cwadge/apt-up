@@ -16,6 +16,7 @@ FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
 # Feature toggles
 ENABLE_FIRMWARE_UPDATE=true
 ENABLE_SYSTEM_UPDATE=true
+ENABLE_DIST_UPGRADE=false
 ENABLE_FLATPAK_UPDATE=true
 ENABLE_KERNEL_CLEANUP=true
 ENABLE_CACHE_CLEAN=true
@@ -23,6 +24,7 @@ ENABLE_HOOKS=true
 
 # Operation mode
 INTERACTIVE=true
+DRY_RUN=false
 
 # Resource management (only applicable to non-interactive mode)
 NICE_LEVEL=10
@@ -100,6 +102,50 @@ cecho ()
 }
 # End color handling functions #
 
+# Begin border functions #
+Print_Header() {
+	local message="$1"
+	local color="${2:-boldblue}"
+	local total_width=66  # Total width of the box with border characters
+	local content_width=64  # Width between the ║ characters
+	
+	# Calculate padding
+	local msg_len=${#message}
+	local padding_total=$((content_width - msg_len))
+	local padding_left=$((padding_total / 2))
+	local padding_right=$((padding_total - padding_left))
+	
+	# Set color based on parameter
+	case $color in
+		black) printf '%b' "$black" ;;
+		boldblack) printf '%b' "$boldblack" ;;
+		red) printf '%b' "$red" ;;
+		boldred) printf '%b' "$boldred" ;;
+		green) printf '%b' "$green" ;;
+		boldgreen) printf '%b' "$boldgreen" ;;
+		yellow) printf '%b' "$yellow" ;;
+		boldyellow) printf '%b' "$boldyellow" ;;
+		blue) printf '%b' "$blue" ;;
+		boldblue) printf '%b' "$boldblue" ;;
+		magenta) printf '%b' "$magenta" ;;
+		boldmagenta) printf '%b' "$boldmagenta" ;;
+		cyan) printf '%b' "$cyan" ;;
+		boldcyan) printf '%b' "$boldcyan" ;;
+		white) printf '%b' "$white" ;;
+		boldwhite) printf '%b' "$boldwhite" ;;
+	esac
+	
+	# Print the header
+	printf "╔════════════════════════════════════════════════════════════════╗\n"
+	printf "║%*s%s%*s║\n" $padding_left "" "$message" $padding_right ""
+	printf "╚════════════════════════════════════════════════════════════════╝\n"
+	
+	# Reset color
+	tput sgr0
+	printf '%b' "$black"
+}
+# End border functions #
+
 Error_Handler ()
 {
 	cecho "[FATAL] Script aborted while $CURRENT_STEP." boldred
@@ -155,6 +201,7 @@ Options:
   --no-interactive     Run without user interaction
   --no-firmware        Skip firmware updates
   --no-update-system   Skip system package updates
+  --no-dist-upgrade    Skip distribution upgrade
   --no-flatpak         Skip Flatpak updates
   --no-kernel-cleanup  Skip removal of old kernels
   --no-cache-clean     Skip cleaning package caches
@@ -162,10 +209,12 @@ Options:
   --interactive        Run the script in interactive mode
   --update-firmware    Update system firmware
   --update-system      Update system packages
+  --dist-upgrade       Perform distribution upgrade (uses apt instead of aptitude)
   --update-flatpak     Perform Flatpak updates
   --kernel-cleanup     Remove old kernels and headers
   --cache-clean        Clean all apt package caches
   --run-hooks          Run scripts in hook directories
+  --dry-run            Show what would be done without making changes
   --install            Create configuration files and hook directories
   --help               Display this help message
 
@@ -180,6 +229,7 @@ Parse_Arguments() {
 			"--no-interactive") INTERACTIVE=false ;;
 			"--no-firmware") ENABLE_FIRMWARE_UPDATE=false ;;
 			"--no-update-system") ENABLE_SYSTEM_UPDATE=false ;;
+			"--no-dist-upgrade") ENABLE_DIST_UPGRADE=false ;;
 			"--no-flatpak") ENABLE_FLATPAK_UPDATE=false ;;
 			"--no-kernel-cleanup") ENABLE_KERNEL_CLEANUP=false ;;
 			"--no-cache-clean") ENABLE_CACHE_CLEAN=false ;;
@@ -187,10 +237,12 @@ Parse_Arguments() {
 			"--interactive") INTERACTIVE=true ;;
 			"--update-firmware") ENABLE_FIRMWARE_UPDATE=true ;;
 			"--update-system") ENABLE_SYSTEM_UPDATE=true ;;
+			"--dist-upgrade") ENABLE_DIST_UPGRADE=true ;;
 			"--update-flatpak") ENABLE_FLATPAK_UPDATE=true ;;
 			"--kernel-cleanup") ENABLE_KERNEL_CLEANUP=true ;;
 			"--cache-clean") ENABLE_CACHE_CLEAN=true ;;
 			"--run-hooks") ENABLE_HOOKS=true ;;
+			"--dry-run") DRY_RUN=true ;;
 			"--install") Create_Config; Create_Hook_Dirs; exit 0 ;;
 			"--help") Show_Help; exit 0 ;;
 			*) cecho "[FATAL] Unknown argument: $arg" red ; Show_Help ; exit 1 ;;
@@ -223,6 +275,9 @@ FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
 # Enable or disable specific features
 ENABLE_FIRMWARE_UPDATE=true
 ENABLE_SYSTEM_UPDATE=true
+# ENABLE_DIST_UPGRADE=false  # WARNING: Only enable when performing major version upgrades
+                             # Ensure /etc/apt/sources.list points to new release first
+                             # Uses 'apt full-upgrade' instead of 'aptitude full-upgrade'
 ENABLE_FLATPAK_UPDATE=true
 ENABLE_KERNEL_CLEANUP=true
 ENABLE_CACHE_CLEAN=true
@@ -289,20 +344,30 @@ Run_Hooks() {
 		return 0
 	fi
 	cecho "[INFO] Running $hook_type hooks" cyan
-	# Find executable files and run them in alphabetical order
-	find "$hooks_path" -type f -executable | sort | while read -r hook; do
-	hook_name=$(basename "$hook")
-	cecho "[INFO] Running hook: $hook_name" cyan
-	"$hook"
-	hook_status=$?  # Capture the hook's exit code immediately
-	if [ "$hook_status" -ne 0 ]; then
-		Warn_Handler
-		if [[ "$hook_name" =~ ^[0-9][0-9]-critical- ]]; then
-			cecho "[ERROR] Critical hook $hook_name failed with exit code $hook_status, aborting." red
-			Error_Handler
-		fi
+	
+	# In dry-run mode, just list what would be run
+	if [ "$DRY_RUN" = "true" ]; then
+		find "$hooks_path" -type f -executable | sort | while read -r hook; do
+			hook_name=$(basename "$hook")
+			cecho "[DRY-RUN] Would run hook: $hook_name" cyan
+		done
+		return 0
 	fi
-done
+	
+	# Normal execution
+	find "$hooks_path" -type f -executable | sort | while read -r hook; do
+		hook_name=$(basename "$hook")
+		cecho "[INFO] Running hook: $hook_name" cyan
+		"$hook"
+		hook_status=$?  # Capture the hook's exit code immediately
+		if [ "$hook_status" -ne 0 ]; then
+			Warn_Handler
+			if [[ "$hook_name" =~ ^[0-9][0-9]-critical- ]]; then
+				cecho "[ERROR] Critical hook $hook_name failed with exit code $hook_status, aborting." red
+				Error_Handler
+			fi
+		fi
+	done
 }
 
 Initialize_Logging() {
@@ -517,6 +582,46 @@ Update_Firmware ()
 	fi
 }
 
+Update_Firmware_DryRun() {
+	CURRENT_STEP="checking firmware update status (dry-run)"
+	FIRMWARE_DIR="/var/cache/linux-firmware"
+	
+	if [ ! -d "$FIRMWARE_DIR" ]; then
+		cecho "[DRY-RUN] Would clone linux-firmware repository from $FIRMWARE_GIT_URL" cyan
+		return 0
+	fi
+	
+	cecho "[DRY-RUN] Checking for firmware updates..." cyan
+	cd "$FIRMWARE_DIR" || Error_Handler
+	
+	# Get current local hash
+	OLD_HASH=$($GITBIN rev-parse HEAD 2>/dev/null) || {
+		cecho "[DRY-RUN] Would update existing firmware repository" cyan
+		return 0
+	}
+	
+	# Check remote without fetching using ls-remote
+	REMOTE_HASH=$($GITBIN ls-remote "$FIRMWARE_GIT_URL" HEAD 2>/dev/null | awk '{print $1}') || {
+		cecho "[DRY-RUN] Could not check remote firmware repository" yellow
+		return 0
+	}
+	
+	if [ -z "$REMOTE_HASH" ]; then
+		cecho "[DRY-RUN] Could not determine remote firmware version" yellow
+		return 0
+	fi
+	
+	if [ "$OLD_HASH" != "$REMOTE_HASH" ]; then
+		cecho "[DRY-RUN] New firmware available:" cyan
+		cecho "[DRY-RUN]   Current: ${OLD_HASH:0:7}" cyan
+		cecho "[DRY-RUN]   Remote:  ${REMOTE_HASH:0:7}" cyan
+		cecho "[DRY-RUN] Would update firmware files in /lib/firmware" cyan
+		cecho "[DRY-RUN] Would update initramfs for all kernels" cyan
+	else
+		cecho "[DRY-RUN] Firmware already up to date" cyan
+	fi
+}
+
 Kernel_Cleanup() {
 	CURRENT_STEP="removing unneeded kernels and headers"
 	# Get current running kernel version
@@ -651,6 +756,271 @@ Kernel_Cleanup() {
 	fi
 }
 
+Kernel_Cleanup_DryRun() {
+	CURRENT_STEP="checking kernel cleanup status (dry-run)"
+	
+	# Get current running kernel version
+	CURRENT_KERNEL=$(uname -r)
+	cecho "[DRY-RUN] Current running kernel: $CURRENT_KERNEL" cyan
+	
+	# Get all installed kernel image packages (excluding meta-packages)
+	KERNEL_IMAGES=$($DPKGBIN --list | awk '/^ii  linux-image-[0-9]/ { print $2 }' | sort -V) || Bypass_Handler
+	
+	# Get all kernel meta packages to preserve them
+	KERNEL_META_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-(image-)?[a-zA-Z]/ { if ($2 !~ /^linux-image-[0-9]/ && $2 !~ /^linux-headers-[0-9]/) print $2 }' | sort) || Bypass_Handler
+	
+	if [ -z "$KERNEL_IMAGES" ]; then
+		cecho "[DRY-RUN] No versioned kernel packages found." cyan
+		return 0
+	fi
+	
+	# Find the latest kernel version (highest version number)
+	LATEST_KERNEL=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 1)
+	cecho "[DRY-RUN] Latest installed kernel: $LATEST_KERNEL" cyan
+	
+	# Determine which kernels to keep (always try to keep at least 2 for safety)
+	KERNELS_TO_KEEP=""
+	if [ "$CURRENT_KERNEL" = "$LATEST_KERNEL" ]; then
+		# Current and latest are the same, find the second-newest kernel
+		SECOND_LATEST=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 2 | head -n 1)
+		if [ -n "$SECOND_LATEST" ] && [ "$SECOND_LATEST" != "$LATEST_KERNEL" ]; then
+			KERNELS_TO_KEEP="$CURRENT_KERNEL $SECOND_LATEST"
+			cecho "[DRY-RUN] Would keep: $CURRENT_KERNEL and previous: $SECOND_LATEST" cyan
+		else
+			# Only one kernel installed
+			KERNELS_TO_KEEP="$CURRENT_KERNEL"
+			cecho "[DRY-RUN] Only one kernel installed, would keep: $CURRENT_KERNEL" cyan
+		fi
+	else
+		# Keep both current and latest
+		KERNELS_TO_KEEP="$CURRENT_KERNEL $LATEST_KERNEL"
+		cecho "[DRY-RUN] Would keep current: $CURRENT_KERNEL and latest: $LATEST_KERNEL" cyan
+	fi
+	
+	# Build list of all packages to remove
+	PACKAGES_TO_REMOVE=""
+	
+	# Process kernel images
+	for kernel_pkg in $KERNEL_IMAGES; do
+		kernel_version=${kernel_pkg#linux-image-}
+		should_keep=false
+		for keep_version in $KERNELS_TO_KEEP; do
+			if [ "$kernel_version" = "$keep_version" ]; then
+				should_keep=true
+				break
+			fi
+		done
+		if [ "$should_keep" = "false" ]; then
+			PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $kernel_pkg"
+		fi
+	done
+	
+	# Process kernel headers
+	HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
+	for header_pkg in $HEADER_PACKAGES; do
+		should_keep=false
+		for keep_version in $KERNELS_TO_KEEP; do
+			base_version=$(echo "$keep_version" | sed -E 's/-[^-]+$//')
+			if [ "$header_pkg" = "linux-headers-${keep_version}" ] || [ "$header_pkg" = "linux-headers-${base_version}-common" ]; then
+				should_keep=true
+				break
+			fi
+		done
+		if [ "$should_keep" = "false" ]; then
+			PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $header_pkg"
+		fi
+	done
+	
+	# Clean up the package list
+	PACKAGES_TO_REMOVE=$(echo $PACKAGES_TO_REMOVE | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/^ *//;s/ *$//')
+	
+	# Filter out meta packages
+	if [ -n "$KERNEL_META_PACKAGES" ]; then
+		FILTERED_PACKAGES=""
+		for pkg in $PACKAGES_TO_REMOVE; do
+			is_meta=false
+			for meta_pkg in $KERNEL_META_PACKAGES; do
+				if [ "$pkg" = "$meta_pkg" ]; then
+					is_meta=true
+					break
+				fi
+			done
+			if [ "$is_meta" = "false" ]; then
+				FILTERED_PACKAGES="$FILTERED_PACKAGES $pkg"
+			fi
+		done
+		PACKAGES_TO_REMOVE=$(echo $FILTERED_PACKAGES | sed 's/^ *//;s/ *$//')
+	fi
+	
+	if [ -n "$PACKAGES_TO_REMOVE" ]; then
+		cecho "[DRY-RUN] Would remove these packages:" boldcyan
+		for pkg in $PACKAGES_TO_REMOVE; do
+			cecho "[DRY-RUN]   - $pkg" cyan
+		done
+		
+		# Calculate approximate size savings
+		TOTAL_SIZE=$($DPKGBIN-query -W -f='${Installed-Size}\n' $PACKAGES_TO_REMOVE 2>/dev/null | awk '{sum+=$1} END {printf "%.1f MB", sum/1024}') || "unknown"
+		cecho "[DRY-RUN] Would free approximately: $TOTAL_SIZE" cyan
+	else
+		cecho "[DRY-RUN] No old kernels or headers to remove" boldcyan
+	fi
+}
+
+Dist_Upgrade() {
+	CURRENT_STEP="performing distribution upgrade"
+	
+	# Check if sources.list exists and is readable
+	if [ ! -r /etc/apt/sources.list ]; then
+		cecho "[ERROR] Cannot read /etc/apt/sources.list" red
+		Error_Handler
+	fi
+	
+	# Provide warnings and guidance
+	cecho "[WARNING] Distribution upgrade mode enabled" boldyellow
+	cecho "[WARNING] This performs a major version upgrade using 'apt full-upgrade'" boldyellow
+	echo
+	cecho "[INFO] Before running a distribution upgrade, you should:" cyan
+	cecho "       1. Update /etc/apt/sources.list to point to the new release" cyan
+	cecho "       2. Backup your system and important data" cyan
+	cecho "       3. Review the release notes for your distribution" cyan
+	cecho "       4. Ensure you have adequate disk space" cyan
+	cecho "       5. Consider running from a terminal multiplexer (tmux/screen)" cyan
+	echo
+	
+	# Check if sources.list contains old/new release indicators
+	# This is a heuristic check - we can't definitively determine if sources are "ready"
+	# but we can warn if we see common patterns
+	if grep -qE '^\s*deb.*\s+(oldstable|oldoldstable)\s+' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null; then
+		cecho "[WARNING] Sources may still reference old release codenames" boldyellow
+		cecho "          Check your sources configuration before proceeding" boldyellow
+		echo
+	fi
+	
+	if [ "$INTERACTIVE" = "true" ]; then
+		echo
+		cecho "[IMPORTANT] Distribution upgrades can take considerable time and may require" boldmagenta
+		cecho "            manual intervention for configuration file conflicts." boldmagenta
+		echo
+		read -r -p "==> Have you updated sources.list and are ready to proceed? [y/N] " REPLY
+		case "$REPLY" in
+			( [yY]|[yY][eE][sS] ) 
+				cecho "[INFO] Proceeding with distribution upgrade..." cyan
+				;;
+			*)
+				cecho "[INFO] Distribution upgrade cancelled by user." cyan
+				cecho "[INFO] Update /etc/apt/sources.list when ready, then run with --dist-upgrade" cyan
+				return 0
+				;;
+		esac
+	else
+		cecho "[WARNING] Running distribution upgrade in non-interactive mode" boldyellow
+		cecho "[WARNING] This may fail if manual intervention is required" boldyellow
+		cecho "[INFO] Consider running interactively for better control" cyan
+	fi
+	
+	# Update package lists first
+	cecho "[INFO] Updating package lists..." cyan
+	$APTBIN update || {
+		cecho "[ERROR] Failed to update package lists" red
+		cecho "[ERROR] Check your sources.list configuration" red
+		Error_Handler
+	}
+	
+	# Perform minimal upgrade first (per Debian upgrade guide)
+	cecho "[INFO] Performing minimal upgrade first..." cyan
+	if [ "$INTERACTIVE" = "true" ]; then
+		$APTBIN upgrade || {
+			cecho "[ERROR] Minimal upgrade failed" red
+			Error_Handler
+		}
+	else
+		$APTBIN -y upgrade || {
+			cecho "[ERROR] Minimal upgrade failed" red
+			Error_Handler
+		}
+	fi
+	
+	# Now perform the full upgrade
+	cecho "[INFO] Performing full distribution upgrade..." cyan
+	cecho "[INFO] This may take a considerable amount of time..." cyan
+	
+	if [ "$INTERACTIVE" = "true" ]; then
+		$APTBIN full-upgrade || {
+			cecho "[ERROR] Distribution upgrade failed" red
+			cecho "[ERROR] System may be in an inconsistent state" red
+			cecho "[INFO] Run 'apt --fix-broken install' to attempt recovery" cyan
+			Error_Handler
+		}
+	else
+		# Non-interactive mode with DEBIAN_FRONTEND=noninteractive
+		DEBIAN_FRONTEND=noninteractive $APTBIN -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade || {
+			cecho "[ERROR] Distribution upgrade failed" red
+			cecho "[ERROR] System may be in an inconsistent state" red
+			cecho "[INFO] Run 'apt --fix-broken install' to attempt recovery" cyan
+			Error_Handler
+		}
+	fi
+	
+	cecho "[INFO] Distribution upgrade completed successfully" boldgreen
+	echo
+	cecho "[INFO] Post-upgrade recommendations:" cyan
+	cecho "       1. Reboot the system when convenient" cyan
+	cecho "       2. Review system logs for any errors" cyan
+	cecho "       3. Check for obsolete packages with: apt autoremove" cyan
+	cecho "       4. Verify critical services are running correctly" cyan
+	echo
+}
+
+Dist_Upgrade_DryRun() {
+	CURRENT_STEP="simulating distribution upgrade (dry-run)"
+	
+	# Check if sources.list exists and is readable
+	if [ ! -r /etc/apt/sources.list ]; then
+		cecho "[DRY-RUN] Cannot read /etc/apt/sources.list" red
+		return 1
+	fi
+	
+	cecho "[DRY-RUN] Distribution upgrade simulation mode" boldcyan
+	echo
+	cecho "[DRY-RUN] Pre-upgrade checklist items to review:" cyan
+	cecho "[DRY-RUN]   1. Update /etc/apt/sources.list to point to new release" cyan
+	cecho "[DRY-RUN]   2. Backup system and important data" cyan
+	cecho "[DRY-RUN]   3. Review release notes for your distribution" cyan
+	cecho "[DRY-RUN]   4. Ensure adequate disk space available" cyan
+	echo
+	
+	# Check for old release indicators
+	if grep -qE '^\s*deb.*\s+(oldstable|oldoldstable)\s+' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null; then
+		cecho "[DRY-RUN] Sources may reference old release codenames" yellow
+	fi
+	
+	# Update package lists
+	cecho "[DRY-RUN] Downloading latest package lists from configured sources..." cyan
+	$APTBIN update || {
+		cecho "[DRY-RUN] Could not update package lists (check sources.list)" yellow
+	}
+	
+	# Simulate minimal upgrade
+	cecho "[DRY-RUN] Simulating minimal upgrade..." cyan
+	$APTBIN -s upgrade 2>/dev/null | grep -E '^(Inst|Remv|Conf)' | head -n 10 || Bypass_Handler
+	
+	# Simulate full upgrade
+	cecho "[DRY-RUN] Simulating full distribution upgrade..." cyan
+	$APTBIN -s full-upgrade 2>/dev/null | grep -E '^(Inst|Remv|Conf)' | head -n 20 || Bypass_Handler
+	
+	# Summary - grep -c already outputs "0" when no matches, no need for || echo "0"
+	UPGRADE_COUNT=$($APTBIN -s full-upgrade 2>/dev/null | grep -c '^Inst' || true)
+	REMOVE_COUNT=$($APTBIN -s full-upgrade 2>/dev/null | grep -c '^Remv' || true)
+	
+	echo
+	cecho "[DRY-RUN] Distribution upgrade summary:" boldcyan
+	cecho "[DRY-RUN]   Packages to upgrade: $UPGRADE_COUNT" cyan
+	cecho "[DRY-RUN]   Packages to remove: $REMOVE_COUNT" cyan
+	cecho "[DRY-RUN] Would perform full upgrade using 'apt full-upgrade'" cyan
+	cecho "[DRY-RUN] Would provide post-upgrade recommendations" cyan
+	echo
+}
+
 ## EXECUTION ##
 Set_BASH_Options
 Load_Config
@@ -660,139 +1030,232 @@ Detect_Bin_Paths
 Sanity_Check
 Apply_Resource_Limits
 
-# Set apt options based on interactive mode
-if [ "$INTERACTIVE" = "false" ]; then
+# Display dry-run mode banner if enabled
+if [ "$DRY_RUN" = "true" ]; then
+	echo
+	cecho "╔════════════════════════════════════════════════════════════════╗" boldcyan
+	cecho "║                         DRY-RUN MODE                           ║" boldcyan
+	cecho "║            No changes will be made to the system               ║" boldcyan
+	cecho "╚════════════════════════════════════════════════════════════════╝" boldcyan
+	echo
+fi
+
+# Set apt options based on interactive mode and dry-run
+if [ "$DRY_RUN" = "true" ]; then
+	APT_OPTS="-s"  # Simulate mode
+elif [ "$INTERACTIVE" = "false" ]; then
 	APT_OPTS="-y"
 else
 	APT_OPTS=""
 fi
 
 if [ "$ENABLE_HOOKS" = "true" ]; then
-	cecho " ________________________________ " boldblue
-	cecho "/ Running pre-update scripts...  \ " boldblue
-	cecho "\________________________________/ " boldblue
+	Print_Header "Running pre-update scripts..."
 	Run_Hooks "pre"
 else
-	cecho " ________________________________ " boldblue
-	cecho "/ Skipping pre-update scripts... \ " boldblue
-	cecho "\________________________________/ " boldblue
+	Print_Header "Skipping pre-update scripts..."
 	cecho "[INFO] Running hook scripts disabled." cyan
 fi
 
-cecho " ________________________________ " boldblue
-cecho "/ Exporting global variables...  \ " boldblue
-cecho "\________________________________/ " boldblue
+Print_Header "Exporting global variables..."
 CURRENT_STEP="exporting global variables"
 for CURRENT_EXPORT in ${EXPORT_VARS}; do
 	cecho "[INFO] Exporting: ${CURRENT_EXPORT}" cyan
 	export "${CURRENT_EXPORT?}"
 done
 
-if [ "$ENABLE_SYSTEM_UPDATE" = "true" ]; then
-	cecho " ________________________________ " boldblue
-	cecho "/ Checking for updated files...  \ " boldblue
-	cecho "\________________________________/ " boldblue
+# Export dry-run mode for hooks
+if [ "$DRY_RUN" = "true" ]; then
+	export APT_UP_DRY_RUN=true
+	cecho "[INFO] Exporting: APT_UP_DRY_RUN=true (for hook scripts)" cyan
+fi
+
+if [ "$ENABLE_DIST_UPGRADE" = "true" ]; then
+	if [ "$DRY_RUN" = "true" ]; then
+		Print_Header "Simulating dist upgrade..."
+	else
+		Print_Header "Distribution upgrade mode..."
+	fi
+	if [ "$DRY_RUN" = "true" ]; then
+		Dist_Upgrade_DryRun
+	else
+		Dist_Upgrade
+	fi
+elif [ "$ENABLE_SYSTEM_UPDATE" = "true" ]; then
+	if [ "$DRY_RUN" = "true" ]; then
+		Print_Header "Simulating system update..."
+	else
+		Print_Header "Checking for updated files..."
+	fi
 	CURRENT_STEP="checking for updated packages"
-	$APTITUDEBIN update || Warn_Handler
-	cecho " ________________________________ " boldblue
-	cecho "/ Updating files if necessary... \ " boldblue
-	cecho "\________________________________/ " boldblue
+	if [ "$DRY_RUN" = "true" ]; then
+		cecho "[DRY-RUN] Downloading latest package lists..." cyan
+		$APTITUDEBIN update || Warn_Handler
+	else
+		$APTITUDEBIN update || Warn_Handler
+	fi
+	if [ "$DRY_RUN" = "true" ]; then
+		Print_Header "Showing available updates..."
+	else
+		Print_Header "Updating files if necessary..."
+	fi
 	CURRENT_STEP="updating the system"
-	$APTITUDEBIN $APT_OPTS full-upgrade || Warn_Handler
+	if [ "$DRY_RUN" = "true" ]; then
+		UPGRADE_LIST=$($APTITUDEBIN -s full-upgrade 2>/dev/null | grep -E '^(Inst|Remv)') || Bypass_Handler
+		if [ -n "$UPGRADE_LIST" ]; then
+			cecho "[DRY-RUN] Packages that would be upgraded:" cyan
+			echo "$UPGRADE_LIST" | head -n 15
+			# grep -c outputs "0" when no matches, no need for || echo "0"
+			UPGRADE_COUNT=$(echo "$UPGRADE_LIST" | grep -c '^Inst' || true)
+			if [ "$UPGRADE_COUNT" -gt 15 ]; then
+				cecho "[DRY-RUN] ... and $((UPGRADE_COUNT - 15)) more packages" cyan
+			fi
+		else
+			cecho "[DRY-RUN] System is already up to date" cyan
+		fi
+	else
+		$APTITUDEBIN $APT_OPTS full-upgrade || Warn_Handler
+	fi
 else
-	cecho " ________________________________ " boldblue
-	cecho "/ Skipping system update...      \ " boldblue
-	cecho "\________________________________/ " boldblue
+	Print_Header "Skipping system update..."
 	cecho "[INFO] System update disabled." cyan
 fi
 
 if [ "$ENABLE_FLATPAK_UPDATE" = "true" ] && [ -f "$FLATPAKBIN" ]; then
-	cecho " ________________________________ " boldblue
-	cecho "/ Updating flatpak packages...   \ " boldblue
-	cecho "\________________________________/ " boldblue
+	if [ "$DRY_RUN" = "true" ]; then
+		Print_Header "Checking flatpak updates..."
+	else
+		Print_Header "Updating flatpak packages..."
+	fi
 	CURRENT_STEP="updating flatpaks"
-	if [ "$INTERACTIVE" = "false" ]; then
+	if [ "$DRY_RUN" = "true" ]; then
+		# Flatpak doesn't have a native dry-run, so we check for updates without applying
+		cecho "[DRY-RUN] Checking for available Flatpak updates..." cyan
+		# Running update without -y will show updates but prompt before installing
+		# We'll capture the output to show what would be updated
+		FLATPAK_UPDATES=$($FLATPAKBIN remote-ls --updates 2>/dev/null | head -n 10)
+		if [ -n "$FLATPAK_UPDATES" ]; then
+			cecho "[DRY-RUN] Available Flatpak updates:" cyan
+			echo "$FLATPAK_UPDATES" | while read -r line; do
+				cecho "[DRY-RUN]   $line" cyan
+			done
+			UPDATE_COUNT=$($FLATPAKBIN remote-ls --updates 2>/dev/null | wc -l)
+			if [ "$UPDATE_COUNT" -gt 10 ]; then
+				cecho "[DRY-RUN] ... and $((UPDATE_COUNT - 10)) more updates" cyan
+			fi
+		else
+			cecho "[DRY-RUN] No Flatpak updates available" cyan
+		fi
+	elif [ "$INTERACTIVE" = "false" ]; then
 		$FLATPAKBIN update -y || Warn_Handler
 	else
 		$FLATPAKBIN update || Warn_Handler
 	fi
 else
-	cecho " ________________________________ " boldblue
-	cecho "/ Skipping flatpak updates...    \ " boldblue
-	cecho "\________________________________/ " boldblue
-	cecho "[INFO] Flatpak updates disabled or flatpak not installed." cyan
+	Print_Header "Skipping flatpak updates..."
+	if [ "$DRY_RUN" = "true" ]; then
+		cecho "[DRY-RUN] Flatpak updates disabled or not installed" cyan
+	else
+		cecho "[INFO] Flatpak updates disabled or flatpak not installed." cyan
+	fi
 fi
 
 if [ "$ENABLE_CACHE_CLEAN" = "true" ]; then
-	cecho " ________________________________ " boldblue
-	cecho "/ Cleaning out the apt cache...  \ " boldblue
-	cecho "\________________________________/ " boldblue
-	CURRENT_STEP="cleaning apt cache"
-	$APTBIN clean || Warn_Handler
-	CURRENT_STEP="cleaning apt-get cache"
-	$APTGETBIN clean || Warn_Handler
-	CURRENT_STEP="cleaning aptitude cache"
-	$APTITUDEBIN clean || Warn_Handler
-	cecho "[INFO] Finished cleaning cache." cyan
+	if [ "$DRY_RUN" = "true" ]; then
+		Print_Header "Checking apt cache size..."
+	else
+		Print_Header "Cleaning out the apt cache..."
+	fi
+	if [ "$DRY_RUN" = "true" ]; then
+		CURRENT_STEP="checking cache size (dry-run)"
+		# Calculate cache sizes
+		APT_CACHE_SIZE=$(du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}' || echo "unknown")
+		APTITUDE_CACHE_SIZE=$(du -sh /var/cache/aptitude/pkgstates.old 2>/dev/null | awk '{print $1}' || echo "0")
+		cecho "[DRY-RUN] Would clean apt cache (~$APT_CACHE_SIZE)" cyan
+		cecho "[DRY-RUN] Would clean apt-get cache" cyan
+		cecho "[DRY-RUN] Would clean aptitude cache" cyan
+	else
+		CURRENT_STEP="cleaning apt cache"
+		$APTBIN clean || Warn_Handler
+		CURRENT_STEP="cleaning apt-get cache"
+		$APTGETBIN clean || Warn_Handler
+		CURRENT_STEP="cleaning aptitude cache"
+		$APTITUDEBIN clean || Warn_Handler
+		cecho "[INFO] Finished cleaning cache." cyan
+	fi
 else
-	cecho " ________________________________ " boldblue
-	cecho "/ Skipping cache cleaning...     \ " boldblue
-	cecho "\________________________________/ " boldblue
-	cecho "[INFO] Cache cleaning disabled." cyan
+	Print_Header "Skipping cache cleaning..."
+	if [ "$DRY_RUN" = "true" ]; then
+		cecho "[DRY-RUN] Cache cleaning disabled" cyan
+	else
+		cecho "[INFO] Cache cleaning disabled." cyan
+	fi
 fi
 
 if [ "$ENABLE_KERNEL_CLEANUP" = "true" ]; then
-	cecho " ________________________________ " boldblue
-	cecho "/ Purge old kernels & headers... \ " boldblue
-	cecho "\________________________________/ " boldblue
-	Kernel_Cleanup
+	if [ "$DRY_RUN" = "true" ]; then
+		Print_Header "Checking old kernels..."
+	else
+		Print_Header "Purge old kernels & headers..."
+	fi
+	if [ "$DRY_RUN" = "true" ]; then
+		Kernel_Cleanup_DryRun
+	else
+		Kernel_Cleanup
+	fi
 else
-	cecho " ________________________________ " boldblue
-	cecho "/ Skipping kernel cleanup...     \ " boldblue
-	cecho "\________________________________/ " boldblue
-	cecho "[INFO] Kernel cleanup disabled." cyan
+	Print_Header "Skipping kernel cleanup..."
+	if [ "$DRY_RUN" = "true" ]; then
+		cecho "[DRY-RUN] Kernel cleanup disabled" cyan
+	else
+		cecho "[INFO] Kernel cleanup disabled." cyan
+	fi
 fi
 
 if [ "$ENABLE_FIRMWARE_UPDATE" = "true" ]; then
-	cecho " ________________________________ " boldblue
-	cecho "/ Updating kernel firmware...    \ " boldblue
-	cecho "\________________________________/ " boldblue
-	Update_Firmware
+	if [ "$DRY_RUN" = "true" ]; then
+		Print_Header "Checking firmware status..."
+	else
+		Print_Header "Updating kernel firmware..."
+	fi
+	if [ "$DRY_RUN" = "true" ]; then
+		Update_Firmware_DryRun
+	else
+		Update_Firmware
+	fi
 else
-	cecho " ________________________________ " boldblue
-	cecho "/ Skipping firmware updates...   \ " boldblue
-	cecho "\________________________________/ " boldblue
-	cecho "[INFO] Firmware updates disabled." cyan
+	Print_Header "Skipping firmware updates..."
+	if [ "$DRY_RUN" = "true" ]; then
+		cecho "[DRY-RUN] Firmware updates disabled" cyan
+	else
+		cecho "[INFO] Firmware updates disabled." cyan
+	fi
 fi
 
-cecho " ________________________________ " boldblue
-cecho "/ Syncing buffers out to disk... \ " boldblue
-cecho "\________________________________/ " boldblue
-CURRENT_STEP="syncing writes out to disk"
-if timeout 60s sync; then
-	cecho "[INFO] Disk sync completed successfully." cyan
+if [ "$DRY_RUN" = "true" ]; then
+	Print_Header "Dry-run complete..."
+	cecho "[DRY-RUN] Would sync buffers to disk" cyan
 else
-	Warn_Handler
+	Print_Header "Syncing buffers out to disk..."
+	CURRENT_STEP="syncing writes out to disk"
+	if timeout 60s sync; then
+		cecho "[INFO] Disk sync completed successfully." cyan
+	else
+		Warn_Handler
+	fi
 fi
 
 if [ "$ENABLE_HOOKS" = "true" ]; then
-	cecho " ________________________________ " boldblue
-	cecho "/ Running post-update scripts... \ " boldblue
-	cecho "\________________________________/ " boldblue
+	Print_Header "Running post-update scripts..."
 	Run_Hooks "post"
 else
-	cecho " ________________________________ " boldblue
-	cecho "/ Skipping post-update scripts...\ " boldblue
-	cecho "\________________________________/ " boldblue
+	Print_Header "Skipping post-update scripts..."
 	cecho "[INFO] Running hook scripts disabled." cyan
 fi
-
 
 # Close log file if enabled
 if [ "$ENABLE_LOGGING" = "true" ]; then
 	echo "==== apt-up run completed at $(date) ====" >> "$LOG_FILE"
 fi
 
-cecho " ________________________________ " boldblue
-cecho "/           Finished.            \ " boldblue
-cecho "\________________________________/ " boldblue
+Print_Header "Finished."
