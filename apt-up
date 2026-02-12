@@ -1085,8 +1085,8 @@ if [ -n "$EXPORT_VARS" ] || [ "$DRY_RUN" = "true" ]; then
 		export "${CURRENT_EXPORT?}"
 	done
 	if [ "$DRY_RUN" = "true" ]; then
-		export APT_UP_DRY_RUN=true
-		cecho "[INFO] Exporting: APT_UP_DRY_RUN=true (for hook scripts)" cyan
+		export IS_DRY_RUN=true
+		cecho "[INFO] Exporting: IS_DRY_RUN=true (for hook scripts)" cyan
 	fi
 fi
 
