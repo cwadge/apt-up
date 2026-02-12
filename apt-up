@@ -395,14 +395,13 @@ Initialize_Logging() {
 Detect_Bin_Paths ()
 {
 	CURRENT_STEP="detecting binary paths"
-	# Required binaries: their absence is fatal and caught in Sanity_Check
-	if [ -z "$DPKGBIN" ]; then DPKGBIN="$(which dpkg 2>/dev/null)"; fi
-	if [ -z "$APTITUDEBIN" ]; then APTITUDEBIN="$(which aptitude 2>/dev/null)"; fi
-	if [ -z "$APTBIN" ]; then APTBIN="$(which apt 2>/dev/null)"; fi
-	if [ -z "$APTGETBIN" ]; then APTGETBIN="$(which apt-get 2>/dev/null)"; fi
-	# Optional binaries: absence is expected and handled gracefully
-	if [ -z "$FLATPAKBIN" ]; then FLATPAKBIN="$(which flatpak 2>/dev/null)"; fi
-	if [ -z "$GITBIN" ]; then GITBIN="$(which git 2>/dev/null)"; fi
+	# Detect all binaries silently; Sanity_Check determines consequences of absence
+	if [ -z "$DPKGBIN" ];    then DPKGBIN="$(command -v dpkg)"; fi
+	if [ -z "$APTITUDEBIN" ]; then APTITUDEBIN="$(command -v aptitude)"; fi
+	if [ -z "$APTBIN" ];     then APTBIN="$(command -v apt)"; fi
+	if [ -z "$APTGETBIN" ];  then APTGETBIN="$(command -v apt-get)"; fi
+	if [ -z "$FLATPAKBIN" ]; then FLATPAKBIN="$(command -v flatpak)"; fi
+	if [ -z "$GITBIN" ];     then GITBIN="$(command -v git)"; fi
 }
 
 Sanity_Check ()
