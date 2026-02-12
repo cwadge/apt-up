@@ -97,6 +97,8 @@ sudo apt-up --no-interactive
 --cache-clean        Clean all apt package caches
 --run-hooks          Run scripts in hook directories
 --dry-run            Show what would be done without making changes
+--dry-run-hooks      Run hook scripts during --dry-run, passing IS_DRY_RUN=true (default)
+--no-dry-run-hooks   List hooks during --dry-run without executing them
 --install            Create configuration files and hook directories
 --help               Display this help message
 ```
@@ -137,31 +139,38 @@ sudo apt-up --dry-run --no-update-system --no-firmware --no-flatpak
 
 ### Hook Scripts
 
-When dry-run mode is active, hook scripts are **not executed**. Instead, apt-up displays which hooks would be run:
-
-```bash
-[INFO] Running pre hooks
-[DRY-RUN] Would run hook: 00-example
-[DRY-RUN] Would run hook: 50-ge-proton
-```
-
-If you want your hook scripts to perform their own dry-run logic when called normally (not in apt-up dry-run mode), you can check the `APT_UP_DRY_RUN` environment variable. However, note that in apt-up's dry-run mode, your hooks won't be executed at all.
-
-**Example hook with its own dry-run support:**
+By default, hook scripts **are executed** during dry-run mode. Before any hooks run, apt-up exports `IS_DRY_RUN=true` into the environment so that hook scripts can detect dry-run mode and skip their own side effects:
 
 ```bash
 #!/bin/bash
-# This hook will only run when apt-up is NOT in dry-run mode
-# (because apt-up skips hook execution entirely in dry-run mode)
+# Example hook with IS_DRY_RUN awareness
 
-# But if you run this hook manually and want it to support dry-run:
-if [ "$APT_UP_DRY_RUN" = "true" ]; then
+if [ "${IS_DRY_RUN:-false}" = "true" ]; then
     echo "[DRY-RUN] Would perform custom action"
     exit 0
 fi
 
 # Normal execution
 echo "Performing custom action..."
+```
+
+If a hook runs during dry-run but contains no reference to `IS_DRY_RUN`, apt-up prints a warning to flag that it may not be dry-run-aware:
+
+```
+[WARNING] Hook '50-legacy-hook' does not check IS_DRY_RUN and may make unintended changes
+```
+
+To skip hook execution entirely during dry-run (listing hooks instead), use `--no-dry-run-hooks` on the command line or set `DRY_RUN_HOOKS=false` in `/etc/apt-up.conf`:
+
+```bash
+# Skip hook execution during --dry-run; only list what would run
+sudo apt-up --dry-run --no-dry-run-hooks
+```
+
+```
+[INFO] Running pre hooks
+[DRY-RUN] Would run hook: 00-example
+[DRY-RUN] Would run hook: 50-ge-proton
 ```
 
 ### Example Output
@@ -181,7 +190,8 @@ Inst linux-image-6.1.0-18-amd64 [6.1.76-1] (6.1.82-1)
 ... and 23 more packages
 
 [INFO] Running pre hooks
-[DRY-RUN] Would run hook: 00-example
+[INFO] Running hook: 00-example
+[DRY-RUN] Would perform custom action
 
 [DRY-RUN] No Flatpak updates available
 
@@ -198,7 +208,8 @@ Inst linux-image-6.1.0-18-amd64 [6.1.76-1] (6.1.82-1)
 [DRY-RUN] Would clean apt cache (~1.3 GB)
 
 [INFO] Running post hooks
-[DRY-RUN] Would run hook: 50-ge-proton
+[INFO] Running hook: 50-ge-proton
+[DRY-RUN] Would update GE-Proton: GE-Proton10-29 → GE-Proton10-30
 ```
 
 ## Distribution Upgrades
@@ -267,14 +278,14 @@ Here's what it looks like in action, checking for firmware & system updates, the
 ```
 [INFO] Loading configuration from /etc/apt-up.conf
 ╔════════════════════════════════════════════════════════════════╗
-║              Running pre-update scripts...                     ║
-╚════════════════════════════════════════════════════════════════╝
-[INFO] Running pre hooks
-╔════════════════════════════════════════════════════════════════╗
 ║              Exporting global variables...                     ║
 ╚════════════════════════════════════════════════════════════════╝
 [INFO] Exporting: IGNORE_CC_MISMATCH=1
 [INFO] Exporting: GE_PROTON_TARGET=/home/gamer_account/.steam/steam/compatibilitytools.d
+╔════════════════════════════════════════════════════════════════╗
+║              Running pre-update scripts...                     ║
+╚════════════════════════════════════════════════════════════════╝
+[INFO] Running pre hooks
 ╔════════════════════════════════════════════════════════════════╗
 ║              Checking for updated files...                     ║
 ╚════════════════════════════════════════════════════════════════╝
@@ -356,6 +367,8 @@ If you want to extend apt-up's functionality, you can add custom scripts to:
 - `/etc/apt-up.d/fail.d/` (on failure).
 
 NOTE: Scripts with '`critical`' in the name (e.g. `00-critical-check.sh`) halt execution if they fail.
+
+Hooks run in dry-run mode by default with `IS_DRY_RUN=true` exported — implement it in your hook to skip side effects gracefully. See [Dry-Run Mode > Hook Scripts](#hook-scripts) for full details.
 
 Run `sudo apt-up --install` to create these directories (with a sample hook in `pre.d`).
 

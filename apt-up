@@ -25,6 +25,7 @@ ENABLE_HOOKS=true
 # Operation mode
 INTERACTIVE=true
 DRY_RUN=false
+DRY_RUN_HOOKS=true     # Execute hooks in dry-run mode (IS_DRY_RUN=true is exported to them)
 
 # Resource management (only applicable to non-interactive mode)
 NICE_LEVEL=10
@@ -215,6 +216,8 @@ Options:
   --cache-clean        Clean all apt package caches
   --run-hooks          Run scripts in hook directories
   --dry-run            Show what would be done without making changes
+  --dry-run-hooks      Run hook scripts in dry-run mode (default; IS_DRY_RUN=true is exported)
+  --no-dry-run-hooks   List hooks in dry-run mode but do not execute them
   --install            Create configuration files and hook directories
   --help               Display this help message
 
@@ -243,6 +246,8 @@ Parse_Arguments() {
 			"--cache-clean") ENABLE_CACHE_CLEAN=true ;;
 			"--run-hooks") ENABLE_HOOKS=true ;;
 			"--dry-run") DRY_RUN=true ;;
+			"--dry-run-hooks") DRY_RUN_HOOKS=true ;;
+			"--no-dry-run-hooks") DRY_RUN_HOOKS=false ;;
 			"--install") Create_Config; Create_Hook_Dirs; exit 0 ;;
 			"--help") Show_Help; exit 0 ;;
 			*) cecho "[FATAL] Unknown argument: $arg" red ; Show_Help ; exit 1 ;;
@@ -282,6 +287,9 @@ ENABLE_FLATPAK_UPDATE=true
 ENABLE_KERNEL_CLEANUP=true
 ENABLE_CACHE_CLEAN=true
 ENABLE_HOOKS=true
+# Run hook scripts in dry-run mode; IS_DRY_RUN=true is exported so hooks can
+# check it and skip side effects. Set to false to only list hooks instead.
+DRY_RUN_HOOKS=true
 
 # Logging settings
 LOG_FILE="/var/log/apt-up.log"
@@ -345,8 +353,8 @@ Run_Hooks() {
 	fi
 	cecho "[INFO] Running $hook_type hooks" cyan
 
-	# In dry-run mode, just list what would be run
-	if [ "$DRY_RUN" = "true" ]; then
+	# In dry-run mode with hook execution disabled: list hooks without running them
+	if [ "$DRY_RUN" = "true" ] && [ "${DRY_RUN_HOOKS:-true}" = "false" ]; then
 		find "$hooks_path" -type f -executable | sort | while read -r hook; do
 		hook_name=$(basename "$hook")
 		cecho "[DRY-RUN] Would run hook: $hook_name" cyan
@@ -354,9 +362,12 @@ Run_Hooks() {
 	return 0
 	fi
 
-	# Normal execution
+	# Execute hooks; in dry-run mode warn if a hook does not check IS_DRY_RUN
 	find "$hooks_path" -type f -executable | sort | while read -r hook; do
 	hook_name=$(basename "$hook")
+	if [ "$DRY_RUN" = "true" ] && ! grep -q "IS_DRY_RUN" "$hook" 2>/dev/null; then
+		cecho "[WARNING] Hook '$hook_name' does not check IS_DRY_RUN and may make unintended changes" boldyellow
+	fi
 	cecho "[INFO] Running hook: $hook_name" cyan
 	"$hook"
 	hook_status=$?  # Capture the hook's exit code immediately
@@ -1049,6 +1060,20 @@ Detect_Bin_Paths
 Sanity_Check
 Apply_Resource_Limits
 
+# Only show the export section if there is something to export
+if [ -n "$EXPORT_VARS" ] || [ "$DRY_RUN" = "true" ]; then
+	Print_Header "Exporting global variables..."
+	CURRENT_STEP="exporting global variables"
+	for CURRENT_EXPORT in ${EXPORT_VARS}; do
+		cecho "[INFO] Exporting: ${CURRENT_EXPORT}" cyan
+		export "${CURRENT_EXPORT?}"
+	done
+	if [ "$DRY_RUN" = "true" ]; then
+		export IS_DRY_RUN=true
+		cecho "[INFO] Exporting: IS_DRY_RUN=true (for hook scripts)" cyan
+	fi
+fi
+
 # Display dry-run mode banner if enabled
 if [ "$DRY_RUN" = "true" ]; then
 	echo
@@ -1074,20 +1099,6 @@ if [ "$ENABLE_HOOKS" = "true" ]; then
 else
 	Print_Header "Skipping pre-update scripts..."
 	cecho "[INFO] Running hook scripts disabled." cyan
-fi
-
-# Only show the export section if there is something to export
-if [ -n "$EXPORT_VARS" ] || [ "$DRY_RUN" = "true" ]; then
-	Print_Header "Exporting global variables..."
-	CURRENT_STEP="exporting global variables"
-	for CURRENT_EXPORT in ${EXPORT_VARS}; do
-		cecho "[INFO] Exporting: ${CURRENT_EXPORT}" cyan
-		export "${CURRENT_EXPORT?}"
-	done
-	if [ "$DRY_RUN" = "true" ]; then
-		export IS_DRY_RUN=true
-		cecho "[INFO] Exporting: IS_DRY_RUN=true (for hook scripts)" cyan
-	fi
 fi
 
 if [ "$ENABLE_DIST_UPGRADE" = "true" ]; then
