@@ -395,12 +395,14 @@ Initialize_Logging() {
 Detect_Bin_Paths ()
 {
 	CURRENT_STEP="detecting binary paths"
-	if [ -z "$DPKGBIN" ]; then DPKGBIN="$(which dpkg)" || Warn_Handler; fi
-	if [ -z "$APTITUDEBIN" ]; then APTITUDEBIN="$(which aptitude)" || Warn_Handler; fi
-	if [ -z "$APTBIN" ]; then APTBIN="$(which apt)" || Warn_Handler; fi
-	if [ -z "$APTGETBIN" ]; then APTGETBIN="$(which apt-get)" || Warn_Handler; fi
-	if [ -z "$FLATPAKBIN" ]; then FLATPAKBIN="$(which flatpak)" || Warn_Handler; fi
-	if [ -z "$GITBIN" ]; then GITBIN="$(which git)" || Warn_Handler; fi
+	# Required binaries: their absence is fatal and caught in Sanity_Check
+	if [ -z "$DPKGBIN" ]; then DPKGBIN="$(which dpkg 2>/dev/null)"; fi
+	if [ -z "$APTITUDEBIN" ]; then APTITUDEBIN="$(which aptitude 2>/dev/null)"; fi
+	if [ -z "$APTBIN" ]; then APTBIN="$(which apt 2>/dev/null)"; fi
+	if [ -z "$APTGETBIN" ]; then APTGETBIN="$(which apt-get 2>/dev/null)"; fi
+	# Optional binaries: absence is expected and handled gracefully
+	if [ -z "$FLATPAKBIN" ]; then FLATPAKBIN="$(which flatpak 2>/dev/null)"; fi
+	if [ -z "$GITBIN" ]; then GITBIN="$(which git 2>/dev/null)"; fi
 }
 
 Sanity_Check ()
@@ -418,11 +420,10 @@ Sanity_Check ()
 		WE_ARE_SANE=false
 	fi
 	if [ ! -f "$APTBIN" ]; then
-		cecho "[WARNING] The apt binary ($APTBIN) doesn't seem to exist." boldyellow
+		cecho "[WARNING] apt binary not found; distribution upgrades will not be available." boldyellow
 	fi
 	if [ ! -f "$FLATPAKBIN" ] && [ "$ENABLE_FLATPAK_UPDATE" = "true" ]; then
-		cecho "[WARNING] The flatpak binary ($FLATPAKBIN) doesn't seem to exist." boldyellow
-		cecho "[INFO] Flatpak updates will be skipped." cyan
+		cecho "[INFO] flatpak is not installed, skipping flatpak updates." cyan
 		ENABLE_FLATPAK_UPDATE=false
 	fi
 	if [ ! -f "$APTITUDEBIN" ]; then
@@ -530,8 +531,8 @@ Update_Firmware ()
 		# Initialize counters
 		SYMLINK_COUNT=0
 		ENTRY_COUNT=0
-		# Clean up recursive and broken symlinks
-		cecho "[INFO] Cleaning recursive and broken symlinks in /lib/firmware..." cyan
+		# Clean up broken and recursive symlinks first
+		cecho "[INFO] Cleaning broken and recursive symlinks in /lib/firmware..." cyan
 		while IFS= read -r link; do
 			if ! readlink -e "$link" >/dev/null 2>&1; then
 				[ "$ENABLE_LOGGING" = "true" ] && cecho "[INFO] Removing broken or recursive symlink: $link" cyan
@@ -542,43 +543,62 @@ Update_Firmware ()
 			fi
 		done < <(find /lib/firmware -type l -maxdepth 5 2>/dev/null)
 		cecho "[INFO] Removed $SYMLINK_COUNT broken or recursive symlinks." cyan
-		# Preemptively clear WHENCE destinations
+		# Preemptively clear WHENCE destinations.
+		# WHENCE uses both quoted ('File: "path"') and unquoted ('File: path') forms;
+		# strip the prefix then optional surrounding quotes to handle both correctly.
 		cecho "[INFO] Scanning for conflicts in /lib/firmware from WHENCE..." cyan
 		TEMP_ENTRIES=$(mktemp)
-		grep -E '^(RawFile|File):' WHENCE | sed -E -e 's/^(RawFile|File):[[:space:]]*"(.+)"/\2/' | sed 's/\\//g' > "$TEMP_ENTRIES"
-		grep -E '^Link:' WHENCE | sed -E -e 's/^Link:[[:space:]]*(.+)[[:space:]]+->.*$/\1/' | sed 's/\\//g' | sed 's/^"//;s/"$//' >> "$TEMP_ENTRIES"
-		while read -r entry; do
-			[ -z "$entry" ] && continue
-			DEST_PATH="/lib/firmware/$entry"
-			if [ -e "$DEST_PATH" ] || [ -L "$DEST_PATH" ]; then
-				if [ -d "$DEST_PATH" ] && [ ! -L "$DEST_PATH" ]; then
-					# Delete conflicting directory
-					[ "$ENABLE_LOGGING" = "true" ] && cecho "[INFO] Removing conflicting directory: $DEST_PATH" cyan
-					rm -rf "$DEST_PATH" || Warn_Handler
-				else
-					# File or symlink
-					[ "$ENABLE_LOGGING" = "true" ] && cecho "[INFO] Removing file or symlink: $DEST_PATH" cyan
-					rm -f "$DEST_PATH" || Warn_Handler
-				fi
-				if [ ! -e "$DEST_PATH" ]; then
-					ENTRY_COUNT=$((ENTRY_COUNT + 1))
-				fi
-			fi
-		done < "$TEMP_ENTRIES"
-		rm -f "$TEMP_ENTRIES"
-		if [ "$ENTRY_COUNT" -gt 0 ]; then
-			cecho "[INFO] Cleared $ENTRY_COUNT files, symlinks, or directories from WHENCE entries." cyan
-		else
-			cecho "[INFO] No files, symlinks, or directories cleared from WHENCE entries." cyan
-		fi
-		# Run the firmware update
-		cecho "[INFO] Installing firmware..." cyan
-		./copy-firmware.sh /lib/firmware || Error_Handler
-		CURRENT_STEP="updating initramfs for new firmware"
-		cecho "[INFO] Updating initramfs..." cyan
-		update-initramfs -k all -u 2>/dev/null || Error_Handler
-	else
-		cecho "[INFO] Firmware already up to date." cyan
+		grep -E '^(RawFile|File):' WHENCE \
+			| sed -E 's/^(RawFile|File):[[:space:]]*//' \
+			| sed 's/^"//;s/"[[:space:]]*$//' \
+			| sed 's/[[:space:]]*$//;s/\\//g' \
+			> "$TEMP_ENTRIES"
+					grep -E '^Link:' WHENCE \
+						| sed -E 's/^Link:[[:space:]]*//' \
+						| sed -E 's/[[:space:]]+->.*$//' \
+						| sed 's/^"//;s/"[[:space:]]*$//' \
+						| sed 's/[[:space:]]*$//;s/\\//g' \
+						>> "$TEMP_ENTRIES"
+											while read -r entry; do
+												[ -z "$entry" ] && continue
+												DEST_PATH="/lib/firmware/$entry"
+												if [ -e "$DEST_PATH" ] || [ -L "$DEST_PATH" ]; then
+													if [ -d "$DEST_PATH" ] && [ ! -L "$DEST_PATH" ]; then
+														# Delete conflicting directory
+														[ "$ENABLE_LOGGING" = "true" ] && cecho "[INFO] Removing conflicting directory: $DEST_PATH" cyan
+														rm -rf "$DEST_PATH" || Warn_Handler
+													else
+														# File or symlink
+														[ "$ENABLE_LOGGING" = "true" ] && cecho "[INFO] Removing file or symlink: $DEST_PATH" cyan
+														rm -f "$DEST_PATH" || Warn_Handler
+													fi
+													if [ ! -e "$DEST_PATH" ]; then
+														ENTRY_COUNT=$((ENTRY_COUNT + 1))
+													fi
+												fi
+											done < "$TEMP_ENTRIES"
+											rm -f "$TEMP_ENTRIES"
+											if [ "$ENTRY_COUNT" -gt 0 ]; then
+												cecho "[INFO] Cleared $ENTRY_COUNT files, symlinks, or directories from WHENCE entries." cyan
+											else
+												cecho "[INFO] No files, symlinks, or directories cleared from WHENCE entries." cyan
+											fi
+											# Final sweep: remove any remaining symlinks in /lib/firmware before reinstall.
+											# Catches cases where an entry moved from File: to Link: between WHENCE versions,
+											# leaving a regular file that copy-firmware.sh's 'ln -s' (no -f flag) collides with.
+											STALE_SYMLINKS=$(find /lib/firmware -type l 2>/dev/null | wc -l)
+											if [ "$STALE_SYMLINKS" -gt 0 ]; then
+												find /lib/firmware -type l -delete 2>/dev/null || Warn_Handler
+												cecho "[INFO] Removed $STALE_SYMLINKS remaining symlinks before reinstall." cyan
+											fi
+											# Run the firmware update
+											cecho "[INFO] Installing firmware..." cyan
+											./copy-firmware.sh /lib/firmware || Error_Handler
+											CURRENT_STEP="updating initramfs for new firmware"
+											cecho "[INFO] Updating initramfs..." cyan
+											update-initramfs -k all -u 2>/dev/null || Error_Handler
+										else
+											cecho "[INFO] Firmware already up to date." cyan
 	fi
 }
 
