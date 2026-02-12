@@ -1076,17 +1076,18 @@ else
 	cecho "[INFO] Running hook scripts disabled." cyan
 fi
 
-Print_Header "Exporting global variables..."
-CURRENT_STEP="exporting global variables"
-for CURRENT_EXPORT in ${EXPORT_VARS}; do
-	cecho "[INFO] Exporting: ${CURRENT_EXPORT}" cyan
-	export "${CURRENT_EXPORT?}"
-done
-
-# Export dry-run mode for hooks
-if [ "$DRY_RUN" = "true" ]; then
-	export APT_UP_DRY_RUN=true
-	cecho "[INFO] Exporting: APT_UP_DRY_RUN=true (for hook scripts)" cyan
+# Only show the export section if there is something to export
+if [ -n "$EXPORT_VARS" ] || [ "$DRY_RUN" = "true" ]; then
+	Print_Header "Exporting global variables..."
+	CURRENT_STEP="exporting global variables"
+	for CURRENT_EXPORT in ${EXPORT_VARS}; do
+		cecho "[INFO] Exporting: ${CURRENT_EXPORT}" cyan
+		export "${CURRENT_EXPORT?}"
+	done
+	if [ "$DRY_RUN" = "true" ]; then
+		export APT_UP_DRY_RUN=true
+		cecho "[INFO] Exporting: APT_UP_DRY_RUN=true (for hook scripts)" cyan
+	fi
 fi
 
 if [ "$ENABLE_DIST_UPGRADE" = "true" ]; then
