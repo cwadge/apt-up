@@ -1086,7 +1086,7 @@ fi
 
 # Set apt options based on interactive mode and dry-run
 if [ "$DRY_RUN" = "true" ]; then
-	APT_OPTS="-s"  # Simulate mode
+	APT_OPTS="-y -s"  # Non-interactive simulate mode (aptitude can prompt even with -s)
 elif [ "$INTERACTIVE" = "false" ]; then
 	APT_OPTS="-y"
 else
@@ -1132,7 +1132,7 @@ elif [ "$ENABLE_SYSTEM_UPDATE" = "true" ]; then
 	fi
 	CURRENT_STEP="updating the system"
 	if [ "$DRY_RUN" = "true" ]; then
-		UPGRADE_LIST=$($APTITUDEBIN -s full-upgrade 2>/dev/null | grep -E '^(Inst|Remv)') || Bypass_Handler
+		UPGRADE_LIST=$($APTITUDEBIN -y -s full-upgrade 2>/dev/null | grep -E '^(Inst|Remv)') || Bypass_Handler
 		if [ -n "$UPGRADE_LIST" ]; then
 			cecho "[DRY-RUN] Packages that would be upgraded:" cyan
 			echo "$UPGRADE_LIST" | head -n 15
