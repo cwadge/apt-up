@@ -10,7 +10,7 @@ CONFIG_FILE="/etc/apt-up.conf"
 EXPORT_VARS="IGNORE_CC_MISMATCH=1"
 # Defaults to GitLab kernel-firmware, which is upstream of kernel.org,
 # but the kernel.org git is a more heavily scrutinized and conservative option:
-# https://web.git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
+# https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
 FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
 
 # Feature toggles
@@ -274,7 +274,7 @@ Create_Config() {
 EXPORT_VARS="IGNORE_CC_MISMATCH=1"
 # Defaults to GitLab kernel-firmware, which is upstream of kernel.org,
 # but the kernel.org git is a more heavily scrutinized and conservative option:
-# https://web.git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
+# https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
 FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
 
 # Enable or disable specific features
