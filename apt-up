@@ -314,10 +314,23 @@ Create_Hook_Dirs() {
 	CURRENT_STEP="populating sample hook"
 	cat > "${HOOKS_DIR}/pre.d/00-example" << 'EOT' || Error_Handler
 #!/bin/bash
-# Example pre-update hook
-# This is a sample pre-update hook.
-# Normally you would do things here,
-# we're just going to exit with 0 (success)
+# Example pre-update hook for apt-up
+#
+# Hook naming:
+#   Hooks run in lexical order. Prefix with NN- to control sequence.
+#   Hooks with 'critical' in the name (e.g. 00-critical-check) will
+#   abort the entire apt-up run if they exit non-zero.
+#
+# Dry-run awareness:
+#   apt-up exports IS_DRY_RUN=true when run with --dry-run.
+#   Check it here to skip side effects during dry runs.
+
+if [ "${IS_DRY_RUN:-false}" = "true" ]; then
+	echo "[DRY-RUN] 00-example: would perform pre-update actions"
+	exit 0
+fi
+
+# Your pre-update actions go here.
 exit 0
 EOT
 CURRENT_STEP="setting permissions on sample hook"
