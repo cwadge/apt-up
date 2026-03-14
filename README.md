@@ -6,7 +6,7 @@ It can be run as an interactive one-shot or install itself with a config file, l
 Built with flexibility and extensibility in mind, it supports colored output, interactive and non-interactive modes, custom pre/post run hooks, and detailed logging.
 
 ## Features
-- **Firmware Updates:** Pulls the latest from linux-firmware via Git (default: GitLab upstream).
+- **Firmware Updates:** Pulls the latest from linux-firmware via Git (default: git.kernel.org; GitLab upstream available in config for bleeding-edge hardware support).
 
 - **System Updates:** Runs aptitude full-upgrade for packages.
 
@@ -331,7 +331,7 @@ Nothing to do.
 ╚════════════════════════════════════════════════════════════════╝
 [INFO] Checking for firmware updates...
 remote: Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
-From https://gitlab.com/kernel-firmware/linux-firmware
+From https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
  * branch            main       -> FETCH_HEAD
 HEAD is now at 2208e9f Merge branch 'intel/fan_control_8086_e20b_8086_1100' into 'main'
 [INFO] Firmware already up to date.

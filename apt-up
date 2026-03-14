@@ -8,10 +8,13 @@ CONFIG_FILE="/etc/apt-up.conf"
 # Default values (may be overridden by config file)
 # Variables to export during update (space-separated list):
 EXPORT_VARS="IGNORE_CC_MISMATCH=1"
-# Defaults to GitLab kernel-firmware, which is upstream of kernel.org,
-# but the kernel.org git is a more heavily scrutinized and conservative option:
-# https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
-FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
+# Defaults to git.kernel.org linux-firmware: conservative, heavily scrutinized,
+# and may lag the GitLab upstream by hours, days, or weeks. Recommended for
+# servers, workstations, and conservative desktops.
+# The GitLab source receives commits faster (preferable for brand-new hardware),
+# but also sees more frequent reversions before merging downstream to kernel.org:
+# https://gitlab.com/kernel-firmware/linux-firmware.git
+FIRMWARE_GIT_URL="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git"
 
 # Feature toggles
 ENABLE_FIRMWARE_UPDATE=true
@@ -272,10 +275,14 @@ Create_Config() {
 ## VARIABLES ##
 # Variables to export during update (space-separated list):
 EXPORT_VARS="IGNORE_CC_MISMATCH=1"
-# Defaults to GitLab kernel-firmware, which is upstream of kernel.org,
-# but the kernel.org git is a more heavily scrutinized and conservative option:
-# https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
-FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
+# Defaults to git.kernel.org linux-firmware: conservative, heavily scrutinized,
+# and may lag the GitLab upstream by hours, days, or weeks. Recommended for
+# servers, workstations, and conservative desktops. To switch to the faster
+# GitLab source (bleeding-edge updates for new hardware, but more frequent
+# reversions before merging downstream), comment the line below and uncomment
+# the alternate URL beneath it:
+FIRMWARE_GIT_URL="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git"
+# FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
 
 # Enable or disable specific features
 ENABLE_FIRMWARE_UPDATE=true
