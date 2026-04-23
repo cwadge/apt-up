@@ -1153,15 +1153,19 @@ elif [ "$ENABLE_SYSTEM_UPDATE" = "true" ]; then
 	fi
 	CURRENT_STEP="updating the system"
 	if [ "$DRY_RUN" = "true" ]; then
-		UPGRADE_LIST=$($APTITUDEBIN -y -s full-upgrade 2>/dev/null | grep -E '^(Inst|Remv)') || Bypass_Handler
+		# Use apt (not aptitude) here: apt -s outputs machine-readable Inst/Remv lines;
+		# aptitude -s outputs human-readable prose that doesn't match the grep pattern.
+		UPGRADE_LIST=$($APTBIN -s full-upgrade 2>/dev/null | grep -E '^(Inst|Remv)') || Bypass_Handler
 		if [ -n "$UPGRADE_LIST" ]; then
-			cecho "[DRY-RUN] Packages that would be upgraded:" cyan
+			cecho "[DRY-RUN] Packages that would be upgraded/installed:" cyan
 			echo "$UPGRADE_LIST" | head -n 15
 			# grep -c outputs "0" when no matches, no need for || echo "0"
 			UPGRADE_COUNT=$(echo "$UPGRADE_LIST" | grep -c '^Inst' || true)
+			REMOVE_COUNT=$(echo "$UPGRADE_LIST" | grep -c '^Remv' || true)
 			if [ "$UPGRADE_COUNT" -gt 15 ]; then
 				cecho "[DRY-RUN] ... and $((UPGRADE_COUNT - 15)) more packages" cyan
 			fi
+			cecho "[DRY-RUN] Summary: $UPGRADE_COUNT to install/upgrade, $REMOVE_COUNT to remove" cyan
 		else
 			cecho "[DRY-RUN] System is already up to date" cyan
 		fi
