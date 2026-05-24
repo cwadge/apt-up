@@ -54,7 +54,6 @@ FLATPAKBIN=""
 GITBIN=""
 
 ## FUNCTIONS ##
-# Begin color handling functions #
 export black='\033[0m'
 export boldblack='\033[1;0m'
 export red='\033[31m'
@@ -98,28 +97,23 @@ cecho ()
 	printf "%s\n" "$message"
 	tput sgr0
 	printf '%b' "$black"
-	# Log to file if enabled
 	if [ "$ENABLE_LOGGING" = "true" ]; then
 		echo "[$(date '+%Y-%m-%d %H:%M:%S')] $message" >> "$LOG_FILE"
 	fi
 	return
 }
-# End color handling functions #
 
-# Begin border functions #
 Print_Header() {
 	local message="$1"
 	local color="${2:-boldblue}"
 	local total_width=66  # Total width of the box with border characters
 	local content_width=64  # Width between the ║ characters
 
-	# Calculate padding
 	local msg_len=${#message}
 	local padding_total=$((content_width - msg_len))
 	local padding_left=$((padding_total / 2))
 	local padding_right=$((padding_total - padding_left))
 
-	# Set color based on parameter
 	case $color in
 		black) printf '%b' "$black" ;;
 		boldblack) printf '%b' "$boldblack" ;;
@@ -139,22 +133,18 @@ Print_Header() {
 		boldwhite) printf '%b' "$boldwhite" ;;
 	esac
 
-	# Print the header
 	printf "╔════════════════════════════════════════════════════════════════╗\n"
 	printf "║%*s%s%*s║\n" $padding_left "" "$message" $padding_right ""
 	printf "╚════════════════════════════════════════════════════════════════╝\n"
 
-	# Reset color
 	tput sgr0
 	printf '%b' "$black"
 }
-# End border functions #
 
 Error_Handler ()
 {
 	cecho "[FATAL] Script aborted while $CURRENT_STEP." boldred
 	echo
-	# Run failure hooks if enabled
 	if [ "$ENABLE_HOOKS" = "true" ]; then
 		Run_Hooks "fail"
 	fi
@@ -404,7 +394,6 @@ done
 Initialize_Logging() {
 	if [ "$ENABLE_LOGGING" = "true" ]; then
 		CURRENT_STEP="initializing logging"
-		# Ensure log directory exists and is writable
 		LOG_DIR=$(dirname "$LOG_FILE")
 		if [ ! -d "$LOG_DIR" ]; then
 			mkdir -p "$LOG_DIR" || {
@@ -418,7 +407,6 @@ Initialize_Logging() {
 			ENABLE_LOGGING=false
 			return
 		fi
-		# Add header to log file
 		echo "==== apt-up run started at $(date) ====" >> "$LOG_FILE"
 	fi
 }
@@ -561,10 +549,9 @@ Update_Firmware ()
 	NEW_HASH=$($GITBIN rev-parse HEAD)
 	if [ "$OLD_HASH" != "$NEW_HASH" ]; then
 		cecho "[INFO] New firmware detected, preparing installation..." cyan
-		# Initialize counters
 		SYMLINK_COUNT=0
 		ENTRY_COUNT=0
-		# Clean up broken and recursive symlinks first
+		# Remove broken and recursive symlinks before reinstalling
 		cecho "[INFO] Cleaning broken and recursive symlinks in /lib/firmware..." cyan
 		while IFS= read -r link; do
 			if ! readlink -e "$link" >/dev/null 2>&1; then
@@ -682,12 +669,11 @@ Update_Firmware_DryRun() {
 
 	Kernel_Cleanup() {
 		CURRENT_STEP="removing unneeded kernels and headers"
-		# Get current running kernel version
 		CURRENT_KERNEL=$(uname -r)
 		cecho "[INFO] Current running kernel: $CURRENT_KERNEL" cyan
-		# Get all installed kernel image packages (excluding meta-packages)
+		# Versioned kernel images only; meta-packages (e.g. linux-image-amd64) excluded
 		KERNEL_IMAGES=$($DPKGBIN --list | awk '/^ii  linux-image-[0-9]/ { print $2 }' | sort -V) || Bypass_Handler
-		# Get all kernel meta packages to preserve them
+		# Meta-packages are tracked separately to avoid accidentally marking them for removal
 		KERNEL_META_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-(image-)?[a-zA-Z]/ { if ($2 !~ /^linux-image-[0-9]/ && $2 !~ /^linux-headers-[0-9]/) print $2 }' | sort) || Bypass_Handler
 		if [ -z "$KERNEL_IMAGES" ]; then
 			cecho "[INFO] No versioned kernel packages found." cyan
@@ -696,25 +682,22 @@ Update_Firmware_DryRun() {
 		# Find the latest kernel version (highest version number)
 		LATEST_KERNEL=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 1)
 		cecho "[INFO] Latest installed kernel: $LATEST_KERNEL" cyan
-		# Determine which kernels to keep (always try to keep at least 2 for safety)
+		# Always keep at least two kernels: current running and one fallback
 		KERNELS_TO_KEEP=""
 		if [ "$CURRENT_KERNEL" = "$LATEST_KERNEL" ]; then
-			# Current and latest are the same, find the second-newest kernel
+			# Running the latest; keep the second-newest as fallback
 			SECOND_LATEST=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 2 | head -n 1)
 			if [ -n "$SECOND_LATEST" ] && [ "$SECOND_LATEST" != "$LATEST_KERNEL" ]; then
 				KERNELS_TO_KEEP="$CURRENT_KERNEL $SECOND_LATEST"
 				cecho "[INFO] Current kernel is latest, keeping: $CURRENT_KERNEL and previous: $SECOND_LATEST" cyan
 			else
-				# Only one kernel installed
 				KERNELS_TO_KEEP="$CURRENT_KERNEL"
 				cecho "[INFO] Only one kernel installed, keeping: $CURRENT_KERNEL" cyan
 			fi
 		else
-			# Keep both current and latest
 			KERNELS_TO_KEEP="$CURRENT_KERNEL $LATEST_KERNEL"
 			cecho "[INFO] Keeping current kernel: $CURRENT_KERNEL and latest kernel: $LATEST_KERNEL" cyan
 		fi
-		# Build list of all packages to remove
 		PACKAGES_TO_REMOVE=""
 		# Process kernel images
 		for kernel_pkg in $KERNEL_IMAGES; do
@@ -731,19 +714,16 @@ Update_Firmware_DryRun() {
 				cecho "[INFO] Marking for removal: $kernel_pkg" cyan
 			fi
 		done
-		# Process kernel headers - get all installed header packages
+		# Process kernel headers
 		HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
 		for header_pkg in $HEADER_PACKAGES; do
 			should_keep=false
 
-		# Check if this header package matches any kernel we want to keep
+		# Match against both the full versioned header and the -common variant.
+		# base_version strips the arch suffix (e.g. 6.1.0-37-amd64 -> 6.1.0-37)
+		# to also retain linux-headers-<base>-common packages.
 		for keep_version in $KERNELS_TO_KEEP; do
-			# Extract the base kernel version (without architecture suffix)
-			# e.g., 6.1.0-37-amd64 -> 6.1.0-37
 			base_version=$(echo "$keep_version" | sed -E 's/-[^-]+$//')
-			# Check if the header package matches either:
-			# 1. The full kernel version (e.g., linux-headers-6.1.0-37-amd64)
-			# 2. The base version + -common (e.g., linux-headers-6.1.0-37-common)
 			if [ "$header_pkg" = "linux-headers-${keep_version}" ] || [ "$header_pkg" = "linux-headers-${base_version}-common" ]; then
 				should_keep=true
 				cecho "[INFO] Keeping headers for kernel $keep_version: $header_pkg" cyan
@@ -755,9 +735,9 @@ Update_Firmware_DryRun() {
 			cecho "[INFO] Marking for removal: $header_pkg" cyan
 		fi
 	done
-	# Clean up the package list (remove duplicates and extra spaces)
+	# Deduplicate and strip whitespace
 	PACKAGES_TO_REMOVE=$(echo $PACKAGES_TO_REMOVE | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/^ *//;s/ *$//')
-	# Filter out any meta packages that might have been accidentally included
+	# Guard against meta-packages being swept up (e.g. linux-image-amd64)
 	if [ -n "$KERNEL_META_PACKAGES" ]; then
 		FILTERED_PACKAGES=""
 		for pkg in $PACKAGES_TO_REMOVE; do
@@ -817,14 +797,13 @@ Update_Firmware_DryRun() {
 Kernel_Cleanup_DryRun() {
 	CURRENT_STEP="checking kernel cleanup status (dry-run)"
 
-	# Get current running kernel version
 	CURRENT_KERNEL=$(uname -r)
 	cecho "[DRY-RUN] Current running kernel: $CURRENT_KERNEL" cyan
 
-	# Get all installed kernel image packages (excluding meta-packages)
+	# Versioned kernel images only; meta-packages (e.g. linux-image-amd64) excluded
 	KERNEL_IMAGES=$($DPKGBIN --list | awk '/^ii  linux-image-[0-9]/ { print $2 }' | sort -V) || Bypass_Handler
 
-	# Get all kernel meta packages to preserve them
+	# Meta-packages are tracked separately to avoid accidentally marking them for removal
 	KERNEL_META_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-(image-)?[a-zA-Z]/ { if ($2 !~ /^linux-image-[0-9]/ && $2 !~ /^linux-headers-[0-9]/) print $2 }' | sort) || Bypass_Handler
 
 	if [ -z "$KERNEL_IMAGES" ]; then
@@ -832,25 +811,22 @@ Kernel_Cleanup_DryRun() {
 		return 0
 	fi
 
-	# Find the latest kernel version (highest version number)
 	LATEST_KERNEL=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 1)
 	cecho "[DRY-RUN] Latest installed kernel: $LATEST_KERNEL" cyan
 
-	# Determine which kernels to keep (always try to keep at least 2 for safety)
+	# Always keep at least two kernels: current running and one fallback
 	KERNELS_TO_KEEP=""
 	if [ "$CURRENT_KERNEL" = "$LATEST_KERNEL" ]; then
-		# Current and latest are the same, find the second-newest kernel
+		# Running the latest; keep the second-newest as fallback
 		SECOND_LATEST=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 2 | head -n 1)
 		if [ -n "$SECOND_LATEST" ] && [ "$SECOND_LATEST" != "$LATEST_KERNEL" ]; then
 			KERNELS_TO_KEEP="$CURRENT_KERNEL $SECOND_LATEST"
 			cecho "[DRY-RUN] Would keep: $CURRENT_KERNEL and previous: $SECOND_LATEST" cyan
 		else
-			# Only one kernel installed
 			KERNELS_TO_KEEP="$CURRENT_KERNEL"
 			cecho "[DRY-RUN] Only one kernel installed, would keep: $CURRENT_KERNEL" cyan
 		fi
 	else
-		# Keep both current and latest
 		KERNELS_TO_KEEP="$CURRENT_KERNEL $LATEST_KERNEL"
 		cecho "[DRY-RUN] Would keep current: $CURRENT_KERNEL and latest: $LATEST_KERNEL" cyan
 	fi
@@ -873,7 +849,7 @@ Kernel_Cleanup_DryRun() {
 		fi
 	done
 
-	# Process kernel headers
+	# Process kernel headers; match full versioned header and -common variant
 	HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
 	for header_pkg in $HEADER_PACKAGES; do
 		should_keep=false
@@ -889,10 +865,10 @@ Kernel_Cleanup_DryRun() {
 		fi
 	done
 
-	# Clean up the package list
+	# Deduplicate and strip whitespace
 	PACKAGES_TO_REMOVE=$(echo $PACKAGES_TO_REMOVE | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/^ *//;s/ *$//')
 
-	# Filter out meta packages
+	# Guard against meta-packages being swept up (e.g. linux-image-amd64)
 	if [ -n "$KERNEL_META_PACKAGES" ]; then
 		FILTERED_PACKAGES=""
 		for pkg in $PACKAGES_TO_REMOVE; do
@@ -933,7 +909,6 @@ Dist_Upgrade() {
 		Error_Handler
 	fi
 
-	# Provide warnings and guidance
 	cecho "[WARNING] Distribution upgrade mode enabled" boldyellow
 	cecho "[WARNING] This performs a major version upgrade using 'apt full-upgrade'" boldyellow
 	echo
@@ -945,9 +920,8 @@ Dist_Upgrade() {
 	cecho "       5. Consider running from a terminal multiplexer (tmux/screen)" cyan
 	echo
 
-	# Check if sources.list contains old/new release indicators
-	# This is a heuristic check - we can't definitively determine if sources are "ready"
-	# but we can warn if we see common patterns
+	# Heuristic check only: warns if sources still reference old codenames,
+	# but cannot definitively determine whether sources are upgrade-ready.
 	if grep -qE '^\s*deb.*\s+(oldstable|oldoldstable)\s+' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null; then
 		cecho "[WARNING] Sources may still reference old release codenames" boldyellow
 		cecho "          Check your sources configuration before proceeding" boldyellow
@@ -976,7 +950,6 @@ Dist_Upgrade() {
 		cecho "[INFO] Consider running interactively for better control" cyan
 	fi
 
-	# Update package lists first
 	cecho "[INFO] Updating package lists..." cyan
 	$APTBIN update || {
 		cecho "[ERROR] Failed to update package lists" red
@@ -984,7 +957,8 @@ Dist_Upgrade() {
 			Error_Handler
 		}
 
-	# Perform minimal upgrade first (per Debian upgrade guide)
+	# Per the Debian upgrade guide: perform a minimal upgrade before the full upgrade
+	# to resolve any held-back packages with minimal disruption.
 	cecho "[INFO] Performing minimal upgrade first..." cyan
 	if [ "$INTERACTIVE" = "true" ]; then
 		$APTBIN upgrade || {
@@ -998,7 +972,6 @@ Dist_Upgrade() {
 								}
 	fi
 
-	# Now perform the full upgrade
 	cecho "[INFO] Performing full distribution upgrade..." cyan
 	cecho "[INFO] This may take a considerable amount of time..." cyan
 
@@ -1010,7 +983,8 @@ Dist_Upgrade() {
 					Error_Handler
 				}
 			else
-				# Non-interactive mode with DEBIAN_FRONTEND=noninteractive
+				# DEBIAN_FRONTEND=noninteractive and --force-conf* suppress debconf prompts
+				# and auto-resolve config file conflicts without halting an unattended run.
 				DEBIAN_FRONTEND=noninteractive $APTBIN -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade || {
 					cecho "[ERROR] Distribution upgrade failed" red
 									cecho "[ERROR] System may be in an inconsistent state" red
@@ -1047,18 +1021,16 @@ Dist_Upgrade_DryRun() {
 	cecho "[DRY-RUN]   4. Ensure adequate disk space available" cyan
 	echo
 
-	# Check for old release indicators
+	# Heuristic check only; warns if sources still reference old codenames.
 	if grep -qE '^\s*deb.*\s+(oldstable|oldoldstable)\s+' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null; then
 		cecho "[DRY-RUN] Sources may reference old release codenames" yellow
 	fi
 
-	# Update package lists
 	cecho "[DRY-RUN] Downloading latest package lists from configured sources..." cyan
 	$APTBIN update || {
 		cecho "[DRY-RUN] Could not update package lists (check sources.list)" yellow
 	}
 
-	# Simulate minimal upgrade
 	cecho "[DRY-RUN] Simulating minimal upgrade..." cyan
 	$APTBIN -s upgrade 2>/dev/null | grep -E '^(Inst|Remv|Conf)' | head -n 10 || Bypass_Handler
 
@@ -1103,7 +1075,6 @@ if [ -n "$EXPORT_VARS" ] || [ "$DRY_RUN" = "true" ]; then
 	fi
 fi
 
-# Display dry-run mode banner if enabled
 if [ "$DRY_RUN" = "true" ]; then
 	echo
 	cecho "╔════════════════════════════════════════════════════════════════╗" boldcyan
@@ -1113,9 +1084,9 @@ if [ "$DRY_RUN" = "true" ]; then
 	echo
 fi
 
-# Set apt options based on interactive mode and dry-run
+# APT_OPTS is "-y -s" in dry-run (simulate + non-interactive), "-y" unattended, "" interactive
 if [ "$DRY_RUN" = "true" ]; then
-	APT_OPTS="-y -s"  # Non-interactive simulate mode (aptitude can prompt even with -s)
+	APT_OPTS="-y -s"  # aptitude can prompt even with -s; -y is required
 elif [ "$INTERACTIVE" = "false" ]; then
 	APT_OPTS="-y"
 else
@@ -1161,10 +1132,10 @@ elif [ "$ENABLE_SYSTEM_UPDATE" = "true" ]; then
 	fi
 	CURRENT_STEP="updating the system"
 	if [ "$DRY_RUN" = "true" ]; then
-		# Use aptitude -s to match the real update path (aptitude full-upgrade).
-		# Previously used 'apt -s' for its machine-readable Inst/Remv lines, but that
-		# diverges from aptitude's resolver and can silently miss packages aptitude would catch.
-		UPGRADE_OUTPUT=$($APTITUDEBIN -s full-upgrade 2>/dev/null) || Bypass_Handler
+		# aptitude -s alone can still prompt interactively on some systems; -y and
+		# DEBIAN_FRONTEND=noninteractive together reliably suppress all interaction.
+		# APT_OPTS is "-y -s" in dry-run mode.
+		UPGRADE_OUTPUT=$(DEBIAN_FRONTEND=noninteractive $APTITUDEBIN $APT_OPTS full-upgrade 2>/dev/null) || Bypass_Handler
 		# Parse aptitude's summary line: "N packages upgraded, N newly installed, N to remove..."
 		SUMMARY=$(echo "$UPGRADE_OUTPUT" | grep -E '^[0-9]+ package')
 		UPGRADE_COUNT=$(echo "$SUMMARY" | grep -oE '^[0-9]+' | head -1 || echo "0")
@@ -1201,10 +1172,9 @@ if [ "$ENABLE_FLATPAK_UPDATE" = "true" ] && [ -f "$FLATPAKBIN" ]; then
 	fi
 	CURRENT_STEP="updating flatpaks"
 	if [ "$DRY_RUN" = "true" ]; then
-		# Flatpak doesn't have a native dry-run, so we check for updates without applying
+		# flatpak has no native dry-run; remote-ls --updates lists pending updates
+		# without downloading or applying anything.
 		cecho "[DRY-RUN] Checking for available Flatpak updates..." cyan
-		# Running update without -y will show updates but prompt before installing
-		# We'll capture the output to show what would be updated
 		FLATPAK_UPDATES=$($FLATPAKBIN remote-ls --updates 2>/dev/null | head -n 10)
 		if [ -n "$FLATPAK_UPDATES" ]; then
 			cecho "[DRY-RUN] Available Flatpak updates:" cyan
@@ -1240,7 +1210,6 @@ if [ "$ENABLE_CACHE_CLEAN" = "true" ]; then
 	fi
 	if [ "$DRY_RUN" = "true" ]; then
 		CURRENT_STEP="checking cache size (dry-run)"
-		# Calculate cache sizes
 		APT_CACHE_SIZE=$(du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}' || echo "unknown")
 		APTITUDE_CACHE_SIZE=$(du -sh /var/cache/aptitude/pkgstates.old 2>/dev/null | awk '{print $1}' || echo "0")
 		cecho "[DRY-RUN] Would clean apt cache (~$APT_CACHE_SIZE)" cyan
@@ -1325,7 +1294,6 @@ else
 	cecho "[INFO] Running hook scripts disabled." cyan
 fi
 
-# Close log file if enabled
 if [ "$ENABLE_LOGGING" = "true" ]; then
 	echo "==== apt-up run completed at $(date) ====" >> "$LOG_FILE"
 fi
