@@ -544,6 +544,8 @@ Update_Firmware ()
 		cecho "[ERROR] $FIRMWARE_DIR is not writable. Run as root or fix permissions." red
 		Error_Handler
 	fi
+	# Run in a subshell so the cd doesn't change CWD for the rest of the script
+	(
 	OLD_HASH=""
 	if [ -d "$FIRMWARE_DIR" ]; then
 		cecho "[INFO] Checking for firmware updates..." cyan
@@ -631,6 +633,7 @@ Update_Firmware ()
 										else
 											cecho "[INFO] Firmware already up to date." cyan
 	fi
+	) # end subshell (preserves CWD for the rest of the script)
 }
 
 Update_Firmware_DryRun() {
@@ -643,23 +646,26 @@ Update_Firmware_DryRun() {
 	fi
 
 	cecho "[DRY-RUN] Checking for firmware updates..." cyan
+
+	# Run in a subshell so the cd doesn't change CWD for the rest of the script
+	(
 	cd "$FIRMWARE_DIR" || Error_Handler
 
 	# Get current local hash
 	OLD_HASH=$($GITBIN rev-parse HEAD 2>/dev/null) || {
 		cecho "[DRY-RUN] Would update existing firmware repository" cyan
-			return 0
+			exit 0
 		}
 
 	# Check remote without fetching using ls-remote
 	REMOTE_HASH=$($GITBIN ls-remote "$FIRMWARE_GIT_URL" HEAD 2>/dev/null | awk '{print $1}') || {
 		cecho "[DRY-RUN] Could not check remote firmware repository" yellow
-			return 0
+			exit 0
 		}
 
 		if [ -z "$REMOTE_HASH" ]; then
 			cecho "[DRY-RUN] Could not determine remote firmware version" yellow
-			return 0
+			exit 0
 		fi
 
 		if [ "$OLD_HASH" != "$REMOTE_HASH" ]; then
@@ -671,6 +677,7 @@ Update_Firmware_DryRun() {
 		else
 			cecho "[DRY-RUN] Firmware already up to date" cyan
 		fi
+		) # end subshell (preserves CWD for the rest of the script)
 	}
 
 	Kernel_Cleanup() {
@@ -910,7 +917,7 @@ Kernel_Cleanup_DryRun() {
 		done
 
 		# Calculate approximate size savings
-		TOTAL_SIZE=$($DPKGBIN-query -W -f='${Installed-Size}\n' $PACKAGES_TO_REMOVE 2>/dev/null | awk '{sum+=$1} END {printf "%.1f MB", sum/1024}') || "unknown"
+		TOTAL_SIZE=$($DPKGBIN-query -W -f='${Installed-Size}\n' $PACKAGES_TO_REMOVE 2>/dev/null | awk '{sum+=$1} END {printf "%.1f MB", sum/1024}') || TOTAL_SIZE="unknown"
 		cecho "[DRY-RUN] Would free approximately: $TOTAL_SIZE" cyan
 	else
 		cecho "[DRY-RUN] No old kernels or headers to remove" boldcyan
@@ -1055,13 +1062,14 @@ Dist_Upgrade_DryRun() {
 	cecho "[DRY-RUN] Simulating minimal upgrade..." cyan
 	$APTBIN -s upgrade 2>/dev/null | grep -E '^(Inst|Remv|Conf)' | head -n 10 || Bypass_Handler
 
-	# Simulate full upgrade
+	# Simulate full upgrade - capture once, reuse for display and summary counts
 	cecho "[DRY-RUN] Simulating full distribution upgrade..." cyan
-	$APTBIN -s full-upgrade 2>/dev/null | grep -E '^(Inst|Remv|Conf)' | head -n 20 || Bypass_Handler
+	FULL_UPGRADE_SIM=$($APTBIN -s full-upgrade 2>/dev/null) || Bypass_Handler
+	echo "$FULL_UPGRADE_SIM" | grep -E '^(Inst|Remv|Conf)' | head -n 20
 
-	# Summary - grep -c already outputs "0" when no matches, no need for || echo "0"
-	UPGRADE_COUNT=$($APTBIN -s full-upgrade 2>/dev/null | grep -c '^Inst' || true)
-	REMOVE_COUNT=$($APTBIN -s full-upgrade 2>/dev/null | grep -c '^Remv' || true)
+	# grep -c already outputs "0" when no matches, no need for || echo "0"
+	UPGRADE_COUNT=$(echo "$FULL_UPGRADE_SIM" | grep -c '^Inst' || true)
+	REMOVE_COUNT=$(echo "$FULL_UPGRADE_SIM"  | grep -c '^Remv' || true)
 
 	echo
 	cecho "[DRY-RUN] Distribution upgrade summary:" boldcyan
@@ -1153,19 +1161,27 @@ elif [ "$ENABLE_SYSTEM_UPDATE" = "true" ]; then
 	fi
 	CURRENT_STEP="updating the system"
 	if [ "$DRY_RUN" = "true" ]; then
-		# Use apt (not aptitude) here: apt -s outputs machine-readable Inst/Remv lines;
-		# aptitude -s outputs human-readable prose that doesn't match the grep pattern.
-		UPGRADE_LIST=$($APTBIN -s full-upgrade 2>/dev/null | grep -E '^(Inst|Remv)') || Bypass_Handler
-		if [ -n "$UPGRADE_LIST" ]; then
+		# Use aptitude -s to match the real update path (aptitude full-upgrade).
+		# Previously used 'apt -s' for its machine-readable Inst/Remv lines, but that
+		# diverges from aptitude's resolver and can silently miss packages aptitude would catch.
+		UPGRADE_OUTPUT=$($APTITUDEBIN -s full-upgrade 2>/dev/null) || Bypass_Handler
+		# Parse aptitude's summary line: "N packages upgraded, N newly installed, N to remove..."
+		SUMMARY=$(echo "$UPGRADE_OUTPUT" | grep -E '^[0-9]+ package')
+		UPGRADE_COUNT=$(echo "$SUMMARY" | grep -oE '^[0-9]+' | head -1 || echo "0")
+		INSTALL_COUNT=$(echo "$SUMMARY" | grep -oE '[0-9]+ newly installed' | grep -oE '[0-9]+' || echo "0")
+		REMOVE_COUNT=$(echo "$SUMMARY"  | grep -oE '[0-9]+ to remove'       | grep -oE '[0-9]+' || echo "0")
+		UPGRADE_COUNT=${UPGRADE_COUNT:-0}
+		INSTALL_COUNT=${INSTALL_COUNT:-0}
+		REMOVE_COUNT=${REMOVE_COUNT:-0}
+		if [ "$((UPGRADE_COUNT + INSTALL_COUNT + REMOVE_COUNT))" -gt 0 ]; then
 			cecho "[DRY-RUN] Packages that would be upgraded/installed:" cyan
-			echo "$UPGRADE_LIST" | head -n 15
-			# grep -c outputs "0" when no matches, no need for || echo "0"
-			UPGRADE_COUNT=$(echo "$UPGRADE_LIST" | grep -c '^Inst' || true)
-			REMOVE_COUNT=$(echo "$UPGRADE_LIST" | grep -c '^Remv' || true)
-			if [ "$UPGRADE_COUNT" -gt 15 ]; then
-				cecho "[DRY-RUN] ... and $((UPGRADE_COUNT - 15)) more packages" cyan
+			# Strip download/disk size lines and the interactive confirmation prompt
+			echo "$UPGRADE_OUTPUT" | grep -vE '^(Need to get|After this|Do you want)' | head -n 20
+			SHOWN=$((UPGRADE_COUNT + INSTALL_COUNT))
+			if [ "$SHOWN" -gt 20 ]; then
+				cecho "[DRY-RUN] ... and $((SHOWN - 20)) more packages" cyan
 			fi
-			cecho "[DRY-RUN] Summary: $UPGRADE_COUNT to install/upgrade, $REMOVE_COUNT to remove" cyan
+			cecho "[DRY-RUN] Summary: $UPGRADE_COUNT to upgrade, $INSTALL_COUNT to install, $REMOVE_COUNT to remove" cyan
 		else
 			cecho "[DRY-RUN] System is already up to date" cyan
 		fi
