@@ -278,7 +278,7 @@ FIRMWARE_GIT_URL="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux
 # Enable or disable specific features
 ENABLE_FIRMWARE_UPDATE=true
 ENABLE_SYSTEM_UPDATE=true
-# ENABLE_DIST_UPGRADE=false  # WARNING: Only enable when performing major version upgrades
+# ENABLE_DIST_UPGRADE=true   # WARNING: Only enable when performing major version upgrades
 			     # Ensure /etc/apt/sources.list points to new release first
 			     # Uses 'apt full-upgrade' instead of 'aptitude full-upgrade'
 ENABLE_FLATPAK_UPDATE=true
@@ -288,6 +288,10 @@ ENABLE_HOOKS=true
 # Run hook scripts in dry-run mode; IS_DRY_RUN=true is exported so hooks can
 # check it and skip side effects. Set to false to only list hooks instead.
 DRY_RUN_HOOKS=true
+
+# Set to false to suppress all interactive prompts; useful for cron/unattended runs.
+# The --no-interactive CLI flag overrides this setting.
+# INTERACTIVE=false
 
 # Logging settings
 LOG_FILE="/var/log/apt-up.log"
@@ -541,6 +545,13 @@ Update_Firmware ()
 		cecho "[INFO] Checking for firmware updates..." cyan
 		cd "$FIRMWARE_DIR" || Error_Handler
 		OLD_HASH=$($GITBIN rev-parse HEAD)
+		# Reconcile origin URL in case FIRMWARE_GIT_URL was changed in the config
+		# after the initial clone; silently ignored otherwise.
+		CURRENT_ORIGIN=$($GITBIN remote get-url origin 2>/dev/null || true)
+		if [ -n "$CURRENT_ORIGIN" ] && [ "$CURRENT_ORIGIN" != "$FIRMWARE_GIT_URL" ]; then
+			cecho "[INFO] Firmware source URL changed, updating origin to $FIRMWARE_GIT_URL..." cyan
+			$GITBIN remote set-url origin "$FIRMWARE_GIT_URL" || Warn_Handler
+		fi
 		$GITBIN fetch --depth 1 origin main || Warn_Handler
 		$GITBIN reset --hard origin/main || Warn_Handler
 	else
@@ -645,9 +656,22 @@ Update_Firmware_DryRun() {
 			exit 0
 		}
 
+	# Reconcile origin URL in case FIRMWARE_GIT_URL was changed in the config
+	# after the initial clone; silently ignored otherwise.
+	CURRENT_ORIGIN=$($GITBIN remote get-url origin 2>/dev/null || true)
+	if [ -n "$CURRENT_ORIGIN" ] && [ "$CURRENT_ORIGIN" != "$FIRMWARE_GIT_URL" ]; then
+		cecho "[DRY-RUN] Firmware source URL changed:" cyan
+		cecho "[DRY-RUN]   Was: $CURRENT_ORIGIN" cyan
+		cecho "[DRY-RUN]   Now: $FIRMWARE_GIT_URL" cyan
+		cecho "[DRY-RUN] Would update origin to new URL before fetching" cyan
+	fi
+
 	# Fetch without applying — mirrors the live path (fetch --depth 1 + rev-parse)
 	# so hash comparison is always apples-to-apples. No worktree changes are made:
 	# FETCH_HEAD is written but HEAD and /lib/firmware are never touched.
+	# Note: if the URL changed above, this fetch still uses the old origin (since
+	# remote set-url is a live-only operation); the reported hash reflects the old
+	# source. The live run will update origin before fetching from the new URL.
 	$GITBIN fetch --depth 1 origin main 2>/dev/null || {
 		cecho "[DRY-RUN] Could not reach remote firmware repository" yellow
 			exit 0
