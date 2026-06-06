@@ -47,6 +47,7 @@ ENABLE_LOGGING=false
 ## BINARIES ##
 # Leave blank for auto-detection:
 DPKGBIN=""
+DPKGQUERYBIN=""
 APTBIN=""
 APTGETBIN=""
 APTITUDEBIN=""
@@ -416,12 +417,13 @@ Detect_Bin_Paths ()
 	CURRENT_STEP="detecting binary paths"
 	# Detect all binaries silently; Sanity_Check determines consequences of absence
 	# '|| true' prevents the ERR trap from firing when a binary isn't installed
-	if [ -z "$DPKGBIN" ];    then DPKGBIN="$(command -v dpkg    2>/dev/null || true)"; fi
-	if [ -z "$APTITUDEBIN" ]; then APTITUDEBIN="$(command -v aptitude 2>/dev/null || true)"; fi
-	if [ -z "$APTBIN" ];     then APTBIN="$(command -v apt     2>/dev/null || true)"; fi
-	if [ -z "$APTGETBIN" ];  then APTGETBIN="$(command -v apt-get  2>/dev/null || true)"; fi
-	if [ -z "$FLATPAKBIN" ]; then FLATPAKBIN="$(command -v flatpak  2>/dev/null || true)"; fi
-	if [ -z "$GITBIN" ];     then GITBIN="$(command -v git     2>/dev/null || true)"; fi
+	if [ -z "$DPKGBIN" ];      then DPKGBIN="$(command -v dpkg       2>/dev/null || true)"; fi
+	if [ -z "$DPKGQUERYBIN" ]; then DPKGQUERYBIN="$(command -v dpkg-query 2>/dev/null || true)"; fi
+	if [ -z "$APTITUDEBIN" ];  then APTITUDEBIN="$(command -v aptitude  2>/dev/null || true)"; fi
+	if [ -z "$APTBIN" ];       then APTBIN="$(command -v apt       2>/dev/null || true)"; fi
+	if [ -z "$APTGETBIN" ];    then APTGETBIN="$(command -v apt-get   2>/dev/null || true)"; fi
+	if [ -z "$FLATPAKBIN" ];   then FLATPAKBIN="$(command -v flatpak   2>/dev/null || true)"; fi
+	if [ -z "$GITBIN" ];       then GITBIN="$(command -v git       2>/dev/null || true)"; fi
 }
 
 Sanity_Check ()
@@ -638,86 +640,87 @@ Update_Firmware_DryRun() {
 	(
 	cd "$FIRMWARE_DIR" || Error_Handler
 
-	# Get current local hash
 	OLD_HASH=$($GITBIN rev-parse HEAD 2>/dev/null) || {
 		cecho "[DRY-RUN] Would update existing firmware repository" cyan
 			exit 0
 		}
 
-	# Check remote without fetching using ls-remote
-	REMOTE_HASH=$($GITBIN ls-remote "$FIRMWARE_GIT_URL" HEAD 2>/dev/null | awk '{print $1}') || {
-		cecho "[DRY-RUN] Could not check remote firmware repository" yellow
+	# Fetch without applying — mirrors the live path (fetch --depth 1 + rev-parse)
+	# so hash comparison is always apples-to-apples. No worktree changes are made:
+	# FETCH_HEAD is written but HEAD and /lib/firmware are never touched.
+	$GITBIN fetch --depth 1 origin main 2>/dev/null || {
+		cecho "[DRY-RUN] Could not reach remote firmware repository" yellow
 			exit 0
 		}
 
-		if [ -z "$REMOTE_HASH" ]; then
+		REMOTE_HASH=$($GITBIN rev-parse FETCH_HEAD 2>/dev/null) || {
 			cecho "[DRY-RUN] Could not determine remote firmware version" yellow
-			exit 0
-		fi
+					exit 0
+				}
 
-		if [ "$OLD_HASH" != "$REMOTE_HASH" ]; then
-			cecho "[DRY-RUN] New firmware available:" cyan
-			cecho "[DRY-RUN]   Current: ${OLD_HASH:0:7}" cyan
-			cecho "[DRY-RUN]   Remote:  ${REMOTE_HASH:0:7}" cyan
-			cecho "[DRY-RUN] Would update firmware files in /lib/firmware" cyan
-			cecho "[DRY-RUN] Would update initramfs for all kernels" cyan
-		else
-			cecho "[DRY-RUN] Firmware already up to date" cyan
-		fi
-		) # end subshell (preserves CWD for the rest of the script)
-	}
-
-	Kernel_Cleanup() {
-		CURRENT_STEP="removing unneeded kernels and headers"
-		CURRENT_KERNEL=$(uname -r)
-		cecho "[INFO] Current running kernel: $CURRENT_KERNEL" cyan
-		# Versioned kernel images only; meta-packages (e.g. linux-image-amd64) excluded
-		KERNEL_IMAGES=$($DPKGBIN --list | awk '/^ii  linux-image-[0-9]/ { print $2 }' | sort -V) || Bypass_Handler
-		# Meta-packages are tracked separately to avoid accidentally marking them for removal
-		KERNEL_META_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-(image-)?[a-zA-Z]/ { if ($2 !~ /^linux-image-[0-9]/ && $2 !~ /^linux-headers-[0-9]/) print $2 }' | sort) || Bypass_Handler
-		if [ -z "$KERNEL_IMAGES" ]; then
-			cecho "[INFO] No versioned kernel packages found." cyan
-			return 0
-		fi
-		# Find the latest kernel version (highest version number)
-		LATEST_KERNEL=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 1)
-		cecho "[INFO] Latest installed kernel: $LATEST_KERNEL" cyan
-		# Always keep at least two kernels: current running and one fallback
-		KERNELS_TO_KEEP=""
-		if [ "$CURRENT_KERNEL" = "$LATEST_KERNEL" ]; then
-			# Running the latest; keep the second-newest as fallback
-			SECOND_LATEST=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 2 | head -n 1)
-			if [ -n "$SECOND_LATEST" ] && [ "$SECOND_LATEST" != "$LATEST_KERNEL" ]; then
-				KERNELS_TO_KEEP="$CURRENT_KERNEL $SECOND_LATEST"
-				cecho "[INFO] Current kernel is latest, keeping: $CURRENT_KERNEL and previous: $SECOND_LATEST" cyan
-			else
-				KERNELS_TO_KEEP="$CURRENT_KERNEL"
-				cecho "[INFO] Only one kernel installed, keeping: $CURRENT_KERNEL" cyan
-			fi
-		else
-			KERNELS_TO_KEEP="$CURRENT_KERNEL $LATEST_KERNEL"
-			cecho "[INFO] Keeping current kernel: $CURRENT_KERNEL and latest kernel: $LATEST_KERNEL" cyan
-		fi
-		PACKAGES_TO_REMOVE=""
-		# Process kernel images
-		for kernel_pkg in $KERNEL_IMAGES; do
-			kernel_version=${kernel_pkg#linux-image-}
-			should_keep=false
-			for keep_version in $KERNELS_TO_KEEP; do
-				if [ "$kernel_version" = "$keep_version" ]; then
-					should_keep=true
-					break
+				if [ "$OLD_HASH" != "$REMOTE_HASH" ]; then
+					cecho "[DRY-RUN] New firmware available:" cyan
+					cecho "[DRY-RUN]   Current: ${OLD_HASH:0:7}" cyan
+					cecho "[DRY-RUN]   Remote:  ${REMOTE_HASH:0:7}" cyan
+					cecho "[DRY-RUN] Would update firmware files in /lib/firmware" cyan
+					cecho "[DRY-RUN] Would update initramfs for all kernels" cyan
+				else
+					cecho "[DRY-RUN] Firmware already up to date" cyan
 				fi
-			done
-			if [ "$should_keep" = "false" ]; then
-				PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $kernel_pkg"
-				cecho "[INFO] Marking for removal: $kernel_pkg" cyan
-			fi
-		done
-		# Process kernel headers
-		HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
-		for header_pkg in $HEADER_PACKAGES; do
-			should_keep=false
+				) # end subshell (preserves CWD for the rest of the script)
+			}
+
+			Kernel_Cleanup() {
+				CURRENT_STEP="removing unneeded kernels and headers"
+				CURRENT_KERNEL=$(uname -r)
+				cecho "[INFO] Current running kernel: $CURRENT_KERNEL" cyan
+				# Versioned kernel images only; meta-packages (e.g. linux-image-amd64) excluded
+				KERNEL_IMAGES=$($DPKGBIN --list | awk '/^ii  linux-image-[0-9]/ { print $2 }' | sort -V) || Bypass_Handler
+				# Meta-packages are tracked separately to avoid accidentally marking them for removal
+				KERNEL_META_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-(image-)?[a-zA-Z]/ { if ($2 !~ /^linux-image-[0-9]/ && $2 !~ /^linux-headers-[0-9]/) print $2 }' | sort) || Bypass_Handler
+				if [ -z "$KERNEL_IMAGES" ]; then
+					cecho "[INFO] No versioned kernel packages found." cyan
+					return 0
+				fi
+				# Find the latest kernel version (highest version number)
+				LATEST_KERNEL=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 1)
+				cecho "[INFO] Latest installed kernel: $LATEST_KERNEL" cyan
+				# Always keep at least two kernels: current running and one fallback
+				KERNELS_TO_KEEP=""
+				if [ "$CURRENT_KERNEL" = "$LATEST_KERNEL" ]; then
+					# Running the latest; keep the second-newest as fallback
+					SECOND_LATEST=$(echo "$KERNEL_IMAGES" | sed 's/linux-image-//' | sort -V | tail -n 2 | head -n 1)
+					if [ -n "$SECOND_LATEST" ] && [ "$SECOND_LATEST" != "$LATEST_KERNEL" ]; then
+						KERNELS_TO_KEEP="$CURRENT_KERNEL $SECOND_LATEST"
+						cecho "[INFO] Current kernel is latest, keeping: $CURRENT_KERNEL and previous: $SECOND_LATEST" cyan
+					else
+						KERNELS_TO_KEEP="$CURRENT_KERNEL"
+						cecho "[INFO] Only one kernel installed, keeping: $CURRENT_KERNEL" cyan
+					fi
+				else
+					KERNELS_TO_KEEP="$CURRENT_KERNEL $LATEST_KERNEL"
+					cecho "[INFO] Keeping current kernel: $CURRENT_KERNEL and latest kernel: $LATEST_KERNEL" cyan
+				fi
+				PACKAGES_TO_REMOVE=""
+				# Process kernel images
+				for kernel_pkg in $KERNEL_IMAGES; do
+					kernel_version=${kernel_pkg#linux-image-}
+					should_keep=false
+					for keep_version in $KERNELS_TO_KEEP; do
+						if [ "$kernel_version" = "$keep_version" ]; then
+							should_keep=true
+							break
+						fi
+					done
+					if [ "$should_keep" = "false" ]; then
+						PACKAGES_TO_REMOVE="$PACKAGES_TO_REMOVE $kernel_pkg"
+						cecho "[INFO] Marking for removal: $kernel_pkg" cyan
+					fi
+				done
+				# Process kernel headers
+				HEADER_PACKAGES=$($DPKGBIN --list | awk '/^ii  linux-headers-[0-9]/ { print $2 }' | sort) || Bypass_Handler
+				for header_pkg in $HEADER_PACKAGES; do
+					should_keep=false
 
 		# Match against both the full versioned header and the -common variant.
 		# base_version strips the arch suffix (e.g. 6.1.0-37-amd64 -> 6.1.0-37)
@@ -893,7 +896,7 @@ Kernel_Cleanup_DryRun() {
 		done
 
 		# Calculate approximate size savings
-		TOTAL_SIZE=$($DPKGBIN-query -W -f='${Installed-Size}\n' $PACKAGES_TO_REMOVE 2>/dev/null | awk '{sum+=$1} END {printf "%.1f MB", sum/1024}') || TOTAL_SIZE="unknown"
+		TOTAL_SIZE=$($DPKGQUERYBIN -W -f='${Installed-Size}\n' $PACKAGES_TO_REMOVE 2>/dev/null | awk '{sum+=$1} END {printf "%.1f MB", sum/1024}') || TOTAL_SIZE="unknown"
 		cecho "[DRY-RUN] Would free approximately: $TOTAL_SIZE" cyan
 	else
 		cecho "[DRY-RUN] No old kernels or headers to remove" boldcyan
@@ -1039,7 +1042,8 @@ Dist_Upgrade_DryRun() {
 	FULL_UPGRADE_SIM=$($APTBIN -s full-upgrade 2>/dev/null) || Bypass_Handler
 	echo "$FULL_UPGRADE_SIM" | grep -E '^(Inst|Remv|Conf)' | head -n 20
 
-	# grep -c already outputs "0" when no matches, no need for || echo "0"
+	# grep -c outputs "0" on no matches but exits non-zero, so || true is required
+	# to prevent the ERR trap from firing in pipefail mode.
 	UPGRADE_COUNT=$(echo "$FULL_UPGRADE_SIM" | grep -c '^Inst' || true)
 	REMOVE_COUNT=$(echo "$FULL_UPGRADE_SIM"  | grep -c '^Remv' || true)
 
