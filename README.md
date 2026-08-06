@@ -6,7 +6,7 @@ It can be run as an interactive one-shot or install itself with a config file, l
 Built with flexibility and extensibility in mind, it supports colored output, interactive and non-interactive modes, custom pre/post run hooks, and detailed logging.
 
 ## Features
-- **Firmware Updates:** Pulls the latest from linux-firmware via Git (default: git.kernel.org; GitLab upstream available in config for bleeding-edge hardware support).
+- **Firmware Updates:** Pulls the latest from linux-firmware via Git (default: git.kernel.org; GitLab upstream available in config for bleeding-edge hardware support). By default this is paired with kernel installs, so both reboot-requiring changes land in the same run.
 
 - **System Updates:** Runs aptitude full-upgrade for packages.
 
@@ -89,7 +89,8 @@ sudo apt-up --no-interactive
 --no-cache-clean     Skip cleaning package caches
 --no-hooks           Skip running hook scripts
 --interactive        Run the script in interactive mode
---update-firmware    Update system firmware
+--update-firmware    Always update system firmware
+--firmware-on-kernel Update firmware only if a kernel was installed (default)
 --update-system      Update system packages
 --dist-upgrade       Perform distribution upgrade (uses apt instead of aptitude)
 --update-flatpak     Perform Flatpak updates
@@ -106,6 +107,25 @@ sudo apt-up --no-interactive
 
 Edit `/etc/apt-up.conf` (after optional `sudo apt-up --install`).
 
+Most toggles are simple booleans. `ENABLE_FIRMWARE_UPDATE` takes three values:
+
+| Value    | Behavior |
+| -------- | -------- |
+| `kernel` | Update firmware only when the same run installed a kernel (default) |
+| `true`   | Always update firmware |
+| `false`  | Never update firmware |
+
+The `kernel` default exists because a kernel install sets a new boot target and
+rebuilds the initramfs anyway. Refreshing firmware alongside it means the new
+kernel boots with the firmware it was paired against, and both reboot-requiring
+changes land together instead of on separate days. Detection compares installed
+`linux-image-*` package names *and* versions from before and after the upgrade,
+so ABI-stable point releases that upgrade in place still count.
+
+Note that an existing `/etc/apt-up.conf` overrides the built-in default, so
+upgrading the script alone will not change behavior on a system that already has
+`ENABLE_FIRMWARE_UPDATE=true` written to config.
+
 ## Dry-Run Mode
 
 Preview all changes before committing to them with `--dry-run`. This mode shows what would happen without modifying your system.
@@ -116,7 +136,7 @@ Preview all changes before committing to them with `--dry-run`. This mode shows 
 
 - **System Updates:** Downloads package lists, then shows what would be upgraded (using `aptitude -s`)
 - **Flatpak Updates:** Shows available Flatpak updates (using `flatpak remote-ls --updates`)
-- **Firmware:** Checks if new firmware is available without fetching
+- **Firmware:** Checks if new firmware is available without fetching (in the default `kernel` mode, only when the simulated upgrade includes a kernel)
 - **Kernel Cleanup:** Lists old kernels and headers that would be removed with size estimates
 - **Cache Cleaning:** Shows current cache sizes that would be freed
 - **Distribution Upgrades:** Downloads package lists, then simulates the upgrade process (using `apt -s`)

@@ -17,7 +17,13 @@ EXPORT_VARS="IGNORE_CC_MISMATCH=1"
 FIRMWARE_GIT_URL="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git"
 
 # Feature toggles
-ENABLE_FIRMWARE_UPDATE=true
+# ENABLE_FIRMWARE_UPDATE accepts three values:
+#   kernel - update firmware only when this run also installed a kernel (default)
+#   true   - always update firmware
+#   false  - never update firmware
+# 'kernel' batches both reboot-requiring changes into the same run: a new kernel
+# sets a new boot target anyway, so the firmware it will load is refreshed with it.
+ENABLE_FIRMWARE_UPDATE=kernel
 ENABLE_SYSTEM_UPDATE=true
 ENABLE_DIST_UPGRADE=false
 ENABLE_FLATPAK_UPDATE=true
@@ -202,7 +208,8 @@ Options:
   --no-cache-clean     Skip cleaning package caches
   --no-hooks           Skip running hook scripts
   --interactive        Run the script in interactive mode
-  --update-firmware    Update system firmware
+  --update-firmware    Always update system firmware
+  --firmware-on-kernel Update firmware only if a kernel was installed (default)
   --update-system      Update system packages
   --dist-upgrade       Perform distribution upgrade (uses apt instead of aptitude)
   --update-flatpak     Perform Flatpak updates
@@ -233,6 +240,7 @@ Parse_Arguments() {
 			"--no-hooks") ENABLE_HOOKS=false ;;
 			"--interactive") INTERACTIVE=true ;;
 			"--update-firmware") ENABLE_FIRMWARE_UPDATE=true ;;
+			"--firmware-on-kernel") ENABLE_FIRMWARE_UPDATE=kernel ;;
 			"--update-system") ENABLE_SYSTEM_UPDATE=true ;;
 			"--dist-upgrade") ENABLE_DIST_UPGRADE=true ;;
 			"--update-flatpak") ENABLE_FLATPAK_UPDATE=true ;;
@@ -276,7 +284,13 @@ FIRMWARE_GIT_URL="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux
 # FIRMWARE_GIT_URL="https://gitlab.com/kernel-firmware/linux-firmware.git"
 
 # Enable or disable specific features
-ENABLE_FIRMWARE_UPDATE=true
+# ENABLE_FIRMWARE_UPDATE accepts three values:
+#   kernel - update firmware only when this run also installed a kernel (default)
+#   true   - always update firmware
+#   false  - never update firmware
+# 'kernel' batches both reboot-requiring changes into the same run: a new kernel
+# sets a new boot target anyway, so the firmware it will load is refreshed with it.
+ENABLE_FIRMWARE_UPDATE=kernel
 ENABLE_SYSTEM_UPDATE=true
 # ENABLE_DIST_UPGRADE=true   # WARNING: Only enable when performing major version upgrades
 			     # Ensure /etc/apt/sources.list points to new release first
@@ -477,7 +491,7 @@ Sanity_Check ()
 			fi
 		fi
 	fi
-	if [ "$ENABLE_FIRMWARE_UPDATE" = "true" ] && [ ! -f "$GITBIN" ]; then
+	if [ "$ENABLE_FIRMWARE_UPDATE" != "false" ] && [ ! -f "$GITBIN" ]; then
 		cecho "[ERROR] The git binary ($GITBIN) doesn't seem to exist." red
 		if [ "$INTERACTIVE" = "true" ]; then
 			echo "        Git is required for firmware updates. Install now? [N/y]"
@@ -504,7 +518,7 @@ Sanity_Check ()
 				cecho "[WARNING] Failed to install git, disabling firmware updates." boldyellow
 							ENABLE_FIRMWARE_UPDATE=false
 						}
-						if [ "$ENABLE_FIRMWARE_UPDATE" = "true" ]; then
+						if [ "$ENABLE_FIRMWARE_UPDATE" != "false" ]; then
 							GITBIN="$(which git)"  # Update after install
 							if [ ! -f "$GITBIN" ]; then
 								cecho "[ERROR] Failed to locate git binary after installation." red
@@ -524,6 +538,15 @@ Install_Aptitude ()
 	CURRENT_STEP="installing aptitude"
 	$APTGETBIN update || Warn_Handler
 	$APTGETBIN -y install aptitude || Error_Handler
+}
+
+# Snapshot of installed kernel packages, used to detect whether a run installed
+# a kernel. Name AND version are captured because ABI-stable point releases
+# upgrade in place with no package name change (linux-image-6.1.0-18-amd64 going
+# from 6.1.76-1 to 6.1.85-1), and those still set a new boot target.
+Kernel_Package_State ()
+{
+	$DPKGQUERYBIN -W -f='${Package} ${Version}\n' 'linux-image-*' 2>/dev/null | sort || true
 }
 
 Update_Firmware ()
@@ -1129,6 +1152,14 @@ else
 	cecho "[INFO] Running hook scripts disabled." cyan
 fi
 
+# Snapshot before either upgrade path so 'kernel' firmware mode can tell whether
+# this run installed a kernel.
+KERNEL_UPDATED=false
+if [ "$ENABLE_FIRMWARE_UPDATE" = "kernel" ]; then
+	CURRENT_STEP="recording installed kernel packages"
+	KERNEL_STATE_PRE="$(Kernel_Package_State)"
+fi
+
 if [ "$ENABLE_DIST_UPGRADE" = "true" ]; then
 	if [ "$DRY_RUN" = "true" ]; then
 		Print_Header "Simulating dist upgrade..."
@@ -1190,6 +1221,26 @@ elif [ "$ENABLE_SYSTEM_UPDATE" = "true" ]; then
 else
 	Print_Header "Skipping system update..."
 	cecho "[INFO] System update disabled." cyan
+fi
+
+# Must run here, not down at the firmware block: Kernel_Cleanup purges old
+# kernels in between, and those removals would otherwise read as a kernel change.
+if [ "$ENABLE_FIRMWARE_UPDATE" = "kernel" ]; then
+	CURRENT_STEP="checking whether a kernel was installed"
+	if [ "$DRY_RUN" = "true" ]; then
+		# Nothing was installed, so inspect the simulated upgrade output instead.
+		# Only one of these is populated, depending on which upgrade path ran.
+		# A kernel being removed rather than added also matches here; acceptable
+		# for a preview, since dry-run touches nothing either way.
+		if echo "${UPGRADE_OUTPUT:-}${FULL_UPGRADE_SIM:-}" | grep -q 'linux-image'; then
+			KERNEL_UPDATED=true
+			cecho "[DRY-RUN] Kernel update pending, firmware update would be paired with it" cyan
+		else
+			cecho "[DRY-RUN] No kernel update pending" cyan
+		fi
+	elif [ "$(Kernel_Package_State)" != "$KERNEL_STATE_PRE" ]; then
+		KERNEL_UPDATED=true
+	fi
 fi
 
 if [ "$ENABLE_FLATPAK_UPDATE" = "true" ] && [ -f "$FLATPAKBIN" ]; then
@@ -1281,11 +1332,22 @@ else
 	fi
 fi
 
-if [ "$ENABLE_FIRMWARE_UPDATE" = "true" ]; then
+if [ "$ENABLE_FIRMWARE_UPDATE" = "kernel" ] && [ "$KERNEL_UPDATED" = "false" ]; then
+	Print_Header "Skipping firmware updates..."
+	if [ "$ENABLE_SYSTEM_UPDATE" = "false" ] && [ "$ENABLE_DIST_UPGRADE" = "false" ]; then
+		cecho "[INFO] No system update ran, so no kernel change to pair firmware with." cyan
+	else
+		cecho "[INFO] No kernel installed this run, leaving firmware alone." cyan
+	fi
+	cecho "[INFO] Use --update-firmware to update firmware unconditionally." cyan
+elif [ "$ENABLE_FIRMWARE_UPDATE" != "false" ]; then
 	if [ "$DRY_RUN" = "true" ]; then
 		Print_Header "Checking firmware status..."
 	else
 		Print_Header "Updating kernel firmware..."
+	fi
+	if [ "$ENABLE_FIRMWARE_UPDATE" = "kernel" ]; then
+		cecho "[INFO] Kernel installed this run, pairing a firmware update with it." cyan
 	fi
 	if [ "$DRY_RUN" = "true" ]; then
 		Update_Firmware_DryRun
