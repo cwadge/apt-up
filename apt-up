@@ -6,8 +6,9 @@
 CONFIG_FILE="/etc/apt-up.conf"
 
 # Default values (may be overridden by config file)
-# Variables to export during update (space-separated list):
-EXPORT_VARS="IGNORE_CC_MISMATCH=1"
+# Variables to export during update (space-separated list).
+# Empty by default; see /etc/apt-up.conf for examples of when to set this.
+EXPORT_VARS=""
 # Defaults to git.kernel.org linux-firmware: conservative, heavily scrutinized,
 # and may lag the GitLab upstream by hours, days, or weeks. Recommended for
 # servers, workstations, and conservative desktops.
@@ -272,8 +273,22 @@ Create_Config() {
 	CURRENT_STEP="creating configuration file"
 	cat > "/etc/apt-up.conf" << 'EOT'
 ## VARIABLES ##
-# Variables to export during update (space-separated list):
-EXPORT_VARS="IGNORE_CC_MISMATCH=1"
+# Variables to export during the update run (space-separated list). These are
+# exported into the environment before any package operations, so anything that
+# runs as part of the upgrade (notably DKMS module rebuilds) inherits them.
+# Empty by default. The most common reason to set it:
+#
+#   IGNORE_CC_MISMATCH=1
+#     Read by the proprietary NVIDIA driver's build scripts, which refuse to
+#     compile when the kernel was built with a different GCC version than the
+#     one currently installed. Uncomment below if you run the NVIDIA driver
+#     alongside a third-party kernel (Liquorix, XanMod, self-built) and DKMS
+#     rebuilds fail with a compiler version mismatch. It has no effect on other
+#     DKMS modules, on the kernel's own build, or on systems without the
+#     proprietary NVIDIA driver.
+#
+EXPORT_VARS=""
+# EXPORT_VARS="IGNORE_CC_MISMATCH=1"
 # Defaults to git.kernel.org linux-firmware: conservative, heavily scrutinized,
 # and may lag the GitLab upstream by hours, days, or weeks. Recommended for
 # servers, workstations, and conservative desktops. To switch to the faster
